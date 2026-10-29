@@ -378,7 +378,8 @@ body.en-tutorial #sheet [data-continue] { display: none; }
 .checks { display: grid; gap: 8px; }
 
 /* ---------- Partida */
-.juego { position: relative; display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr) auto; gap: 8px; padding-block: 8px; max-width: 1280px; margin: 0 auto; }
+.juego { position: relative; display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr) auto; gap: 8px;
+  padding-block: max(8px, env(safe-area-inset-top, 0px)) max(8px, env(safe-area-inset-bottom, 0px)); max-width: 1280px; margin: 0 auto; }
 
 /* La pizarra del bar: solo el tanteo, en una fila (número grande y barra hasta 40) */
 .pizarra {

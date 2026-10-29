@@ -13,6 +13,7 @@ con el progreso guardado.
 docs/                 La web: lo que publica GitHub Pages (se genera con build.js; no se toca a mano)
   index.html          El juego entero en una página
   config.js           Los datos de Supabase (vacío = el progreso se guarda solo en el dispositivo)
+  manifest.webmanifest, sw.js, icono-*.png   Para instalarlo como app en el móvil (y jugar sin cobertura)
 src/                  Las piezas del juego
   engine.js           Las reglas del Perro (bazas, ligado, flor, truque, cobros, juegos y vacas)
   ai.js               Los jugadores del ordenador
@@ -24,6 +25,8 @@ src/                  Las piezas del juego
   mesa.js             La mesa con amigos: partidas en línea con un código o un enlace
   ui.js               La interfaz
   template.html       El HTML y los estilos
+  sw.js               El «service worker»: guarda una copia del juego en el móvil
+  iconos/             El icono de la app (icono.js dibuja el SVG; los PNG salen de ahí)
 supabase/esquema.sql  La tabla de jugadores y sus reglas de seguridad
 build.js              Junta src/ en docs/index.html (y en el-perro.html, para probar en local)
 test.js               Pruebas de las reglas
@@ -32,6 +35,18 @@ config.ejemplo.js     Plantilla de docs/config.js
 
 Después de cambiar algo en `src/`: `node build.js` (o `npm run build`) y `node test.js` (o `npm test`) para comprobar
 las reglas. No hace falta instalar nada: solo Node.
+
+## Tenerlo como app en el móvil
+
+No hace falta ninguna tienda de aplicaciones: se instala desde la propia web y queda con su icono (el perro sobre el
+tapete), se abre a pantalla completa y se puede jugar contra Tío Basilio sin cobertura.
+
+- **iPhone:** abre la web en **Safari**, toca el botón de **Compartir** (el cuadrado con la flecha hacia arriba) y elige
+  **«Añadir a pantalla de inicio»** → **Añadir**. (Tiene que ser Safari; en iOS 16.4 o más nuevo también vale desde Chrome.)
+- **Android:** abre la web en **Chrome**, toca los tres puntos y elige **«Añadir a pantalla de inicio»** o **«Instalar aplicación»**.
+
+La app se actualiza sola cuando hay internet. En el iPhone, la app de la pantalla de inicio guarda su progreso aparte del de
+Safari: con una cuenta («Tu cuenta») se recupera en los dos sitios.
 
 ## Publicarlo en GitHub Pages (gratis)
 
