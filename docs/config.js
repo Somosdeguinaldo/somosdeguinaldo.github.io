@@ -6,6 +6,6 @@
             NUNCA pongas la «secret» ni la «service_role».
    Si los dejas vacíos, el juego funciona igual, pero sin mesa con amigos y cada uno guarda su progreso en su dispositivo. */
 window.PERRO_NUBE = {
-  url: '',
-  clave: '',
+  url: 'https://maisuralwupkpjiexxlv.supabase.co',
+  clave: 'sb_publishable_Nv76dhrdsvJuCbUSmFDftw_GFyuYUZ-',
 };

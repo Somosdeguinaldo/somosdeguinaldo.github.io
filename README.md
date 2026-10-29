@@ -46,6 +46,10 @@ Cada vez que se suba un cambio a `main`, la web se actualiza sola.
 
 ## Conectar la base de datos (cuentas de jugador), también gratis
 
+**Ya está hecho:** el proyecto de Supabase es `el-perro` (organización *elperro*, región París) y sus datos ya están
+en `docs/config.js`. Solo quedan dos ajustes que se hacen a mano en el panel de Supabase (pasos 3 y 4).
+Lo de abajo sirve por si algún día hay que montarlo de nuevo.
+
 Se usa [Supabase](https://supabase.com): da cuentas con correo y contraseña y una base de datos PostgreSQL.
 Su plan gratuito sobra para un pueblo entero.
 
@@ -54,8 +58,11 @@ Su plan gratuito sobra para un pueblo entero.
    Crea la tabla `jugadores` con una regla para que cada jugador solo pueda leer y cambiar su propia ficha.
 3. **Dirección de la web**: en **Authentication → URL Configuration**, pon en *Site URL* la dirección de tu web
    (`https://pablogalandev-dot.github.io/El-perro/`). Así los correos de confirmación y de «olvidé mi contraseña» vuelven al juego.
-4. **Confirmar correo** (opcional): en **Authentication → Providers → Email** puedes dejar activado «Confirm email»
-   (más seguro: llega un correo para confirmar) o desactivarlo (se entra directamente al crear la cuenta).
+4. **Confirmar correo**: en **Authentication → Sign In / Providers → Email**, desactiva «Confirm email» para que se entre
+   directamente al crear la cuenta. El correo que trae Supabase de serie solo escribe a los miembros de tu organización
+   (y unos pocos correos por hora), así que con la confirmación puesta tus amigos no podrían crearse la cuenta.
+   Si algún día quieres los correos de verdad (confirmar, «olvidé mi contraseña»), hay que poner un servicio de correo
+   propio en **Authentication → Emails → SMTP Settings** (Resend o Brevo tienen plan gratis).
 5. **Los dos datos**: en **Project Settings → API Keys** (o con el botón **Connect** del proyecto) copia *Project URL* y la
    *Publishable key* (`sb_publishable_…`; en proyectos antiguos, la *anon public*), y pégalos en `docs/config.js`:
 
