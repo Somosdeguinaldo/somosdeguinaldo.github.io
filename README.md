@@ -56,19 +56,20 @@ Su plan gratuito sobra para un pueblo entero.
    (`https://pablogalandev-dot.github.io/El-perro/`). Así los correos de confirmación y de «olvidé mi contraseña» vuelven al juego.
 4. **Confirmar correo** (opcional): en **Authentication → Providers → Email** puedes dejar activado «Confirm email»
    (más seguro: llega un correo para confirmar) o desactivarlo (se entra directamente al crear la cuenta).
-5. **Los dos datos**: en **Project Settings → API** copia *Project URL* y la clave *anon public*, y pégalos en `docs/config.js`:
+5. **Los dos datos**: en **Project Settings → API Keys** (o con el botón **Connect** del proyecto) copia *Project URL* y la
+   *Publishable key* (`sb_publishable_…`; en proyectos antiguos, la *anon public*), y pégalos en `docs/config.js`:
 
    ```js
    window.PERRO_NUBE = {
      url: 'https://abcdefghijkl.supabase.co',
-     clave: 'eyJhbGciOi...',
+     clave: 'sb_publishable_...',
    };
    ```
 
-   La clave *anon* es pública a propósito: lo que protege los datos son las reglas de la tabla.
-   **Nunca** pongas la clave *service_role*.
+   Esa clave es pública a propósito: lo que protege los datos son las reglas de la tabla.
+   **Nunca** pongas la *secret key* ni la *service_role*.
 6. Sube el `docs/config.js` cambiado a GitHub. En la puerta del bar aparecerá el posavasos **Tu cuenta**
-   para crear la cuenta o entrar.
+   para crear la cuenta o entrar, y se abrirá la mesa con amigos.
 
 ## Qué se guarda de cada jugador
 
