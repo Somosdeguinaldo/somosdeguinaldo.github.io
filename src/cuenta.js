@@ -46,7 +46,10 @@ let sesion = leer(SESION);   // { access_token, refresh_token, expires_at, user 
 async function api(ruta, { metodo = 'GET', cuerpo, token, cabeceras = {} } = {}) {
   const r = await fetch(URL_NUBE + ruta, {
     method: metodo,
-    headers: Object.assign({ apikey: CLAVE, Authorization: 'Bearer ' + (token || CLAVE), 'Content-Type': 'application/json' }, cabeceras),
+    // La clave nueva (sb_publishable_…) va solo en «apikey»; en «Authorization» solo va el token de la sesión
+    // (o la clave antigua «anon», que también es un token)
+    headers: Object.assign({ apikey: CLAVE, 'Content-Type': 'application/json' },
+      token || /^eyJ/.test(CLAVE) ? { Authorization: 'Bearer ' + (token || CLAVE) } : {}, cabeceras),
     body: cuerpo ? JSON.stringify(cuerpo) : undefined,
   });
   const texto = await r.text();
