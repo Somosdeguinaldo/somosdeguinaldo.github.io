@@ -5,7 +5,7 @@ Se juega en el Bar Doble J: 1 contra 1 con Tío Basilio, o 2 contra 2 con Maribe
 Incluye el tutorial de Tío Basilio, la baraja española dibujada en vectorial, sonido y cuentas de jugador
 con el progreso guardado.
 
-**Jugar:** https://pablogalandev-dot.github.io/El-perro/ (cuando esté activado GitHub Pages, ver abajo).
+**Jugar:** https://somosdeguinaldo.github.io/
 
 ## Cómo está organizado
 
@@ -39,7 +39,7 @@ El código ya está en este repositorio. Solo falta encender la web:
 
 1. En el repositorio: **Settings → Pages → Build and deployment → Source: Deploy from a branch**.
 2. Rama **`main`** y carpeta **`/docs`**. Guarda.
-3. En un par de minutos estará en **https://pablogalandev-dot.github.io/El-perro/**.
+3. En un par de minutos estará en **https://somosdeguinaldo.github.io/**.
 
 Así ya se puede jugar. El progreso se guarda en cada dispositivo hasta que conectes la base de datos.
 Cada vez que se suba un cambio a `main`, la web se actualiza sola.
@@ -57,7 +57,7 @@ Su plan gratuito sobra para un pueblo entero.
 2. **Crear la tabla**: en el proyecto, abre **SQL Editor**, pega el contenido de `supabase/esquema.sql` y pulsa **Run**.
    Crea la tabla `jugadores` con una regla para que cada jugador solo pueda leer y cambiar su propia ficha.
 3. **Dirección de la web**: en **Authentication → URL Configuration**, pon en *Site URL* la dirección de tu web
-   (`https://pablogalandev-dot.github.io/El-perro/`). Así los correos de confirmación y de «olvidé mi contraseña» vuelven al juego.
+   (`https://somosdeguinaldo.github.io/`). Así los correos de confirmación y de «olvidé mi contraseña» vuelven al juego.
 4. **Confirmar correo**: en **Authentication → Sign In / Providers → Email**, desactiva «Confirm email» para que se entre
    directamente al crear la cuenta. El correo que trae Supabase de serie solo escribe a los miembros de tu organización
    (y unos pocos correos por hora), así que con la confirmación puesta tus amigos no podrían crearse la cuenta.
