@@ -1,0 +1,11 @@
+{
+  "name": "el-perro",
+  "version": "1.0.0",
+  "description": "El Perro, el truque de Fuenteguinaldo y Castillejo de Azaba, para jugar en el móvil o el ordenador.",
+  "private": true,
+  "scripts": {
+    "build": "node build.js",
+    "test": "node test.js"
+  },
+  "license": "UNLICENSED"
+}
