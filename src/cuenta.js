@@ -43,9 +43,9 @@ const avisar = () => { for (const f of E.oyentes) try { f(E); } catch (e) { cons
 
 // ---------------------------------------------------------------- Llamadas a Supabase
 let sesion = leer(SESION);   // { access_token, refresh_token, expires_at, user }
-async function api(ruta, { metodo = 'GET', cuerpo, token, cabeceras = {} } = {}) {
+async function api(ruta, { metodo = 'GET', cuerpo, token, cabeceras = {}, seguir = false } = {}) {
   const r = await fetch(URL_NUBE + ruta, {
-    method: metodo,
+    method: metodo, keepalive: seguir,
     // La clave nueva (sb_publishable_…) va solo en «apikey»; en «Authorization» solo va el token de la sesión
     // (o la clave antigua «anon», que también es un token)
     headers: Object.assign({ apikey: CLAVE, 'Content-Type': 'application/json' },
@@ -93,7 +93,34 @@ async function token() {
 }
 const nombreDe = (u) => (u && u.user_metadata && u.user_metadata.nombre) || (u && u.email ? u.email.split('@')[0] : 'Jugador');
 
-// Lee la ficha del jugador; si no existe todavía, la crea con el progreso que haya en este dispositivo
+// ---------------------------------------------------------------- Juntar el progreso de la nube y el del dispositivo
+// Los contadores solo crecen. Si lo de este dispositivo es de la misma cuenta, de cada contador se queda el mayor
+// (así no se pierde nada aunque un móvil tenga una copia vieja o se haya jugado sin cobertura). Si es de alguien
+// que jugó sin cuenta en este dispositivo, se suma a la cuenta.
+const CONTADORES = [['partidas', 'jugadas'], ['partidas', 'ganadas'], ['partidas', 'perdidas'], ['juegos', 'ganados'], ['juegos', 'perdidos'],
+  ['vacas', 'ganadas'], ['vacas', 'perdidas'], ['chinas', 'ganadas'], ['chinas', 'perdidas'], ['jugadas']];
+const num = v => (typeof v === 'number' && isFinite(v) ? v : 0);
+const leerRuta = (o, r) => num(r.reduce((a, k) => (a == null ? a : a[k]), o));
+function ponerRuta(o, r, v) { let a = o; for (const k of r.slice(0, -1)) a = a[k] || (a[k] = {}); a[r[r.length - 1]] = v; }
+const actividad = p => leerRuta(p, ['jugadas']) + leerRuta(p, ['partidas', 'jugadas']);
+const fecha = t => Date.parse(t || '') || 0;
+function fusionar(nube, local, sumar) {
+  const r = completar(JSON.parse(JSON.stringify(nube)));
+  const junta = (a, b) => (sumar ? a + b : Math.max(a, b));
+  const rutas = CONTADORES.slice();
+  for (const m of new Set([...Object.keys(nube.porModo || {}), ...Object.keys(local.porModo || {})])) rutas.push(['porModo', m, 'jugadas'], ['porModo', m, 'ganadas']);
+  for (const ruta of rutas) ponerRuta(r, ruta, junta(leerRuta(nube, ruta), leerRuta(local, ruta)));
+  const masNueva = fecha(local.ultimaPartida) > fecha(nube.ultimaPartida) ? local : nube;
+  r.ultimaPartida = masNueva.ultimaPartida || null;
+  r.racha = { actual: leerRuta(masNueva, ['racha', 'actual']), mejor: Math.max(leerRuta(nube, ['racha', 'mejor']), leerRuta(local, ['racha', 'mejor'])) };
+  r.racha.mejor = Math.max(r.racha.mejor, r.racha.actual);
+  r.tutorial = !!(nube.tutorial || local.tutorial);
+  const pv = [fecha(nube.primeraVez), fecha(local.primeraVez)].filter(Boolean);
+  if (pv.length) r.primeraVez = new Date(Math.min(...pv)).toISOString();
+  return r;
+}
+
+// Lee la ficha del jugador y la junta con lo que haya en este dispositivo; luego deja las dos iguales
 async function cargarFicha() {
   const tk = await token();
   if (!tk || !sesion.user) return;
@@ -101,36 +128,55 @@ async function cargarFicha() {
   const filas = await api(`/rest/v1/jugadores?id=eq.${encodeURIComponent(id)}&select=nombre,progreso,actualizado`, { token: tk });
   const local = E.progreso;
   const fila = Array.isArray(filas) ? filas[0] : null;
-  const vacia = !fila || !fila.progreso || !fila.progreso.partidas || !fila.progreso.partidas.jugadas;
-  if (fila && !vacia) {
-    E.progreso = completar(fila.progreso);
-    E.progreso.nombre = fila.nombre || E.progreso.nombre;
-  } else {
-    // Cuenta nueva: se queda con lo que se haya jugado en este dispositivo
-    E.progreso = completar(Object.assign({}, local, { nombre: (fila && fila.nombre) || nombreDe(sesion.user) }));
-    if (local.tutorial) E.progreso.tutorial = true;
-    await subir();
-  }
-  E.usuario = { id, email: sesion.user.email, nombre: E.progreso.nombre };
-  escribir(LOCAL, E.progreso);
+  const enNube = fila && fila.progreso && typeof fila.progreso === 'object' ? completar(fila.progreso) : null;
+  const deOtro = !!(local.dueno && local.dueno !== id);   // lo de aquí es de otra cuenta: no se mezcla
+  let p;
+  if (deOtro) p = enNube || vacio();
+  else if (!enNube || !actividad(enNube)) p = fusionar(local, enNube || vacio(), false);   // cuenta nueva: se queda con lo de aquí
+  else p = fusionar(enNube, local, local.dueno !== id);
+  p.nombre = (fila && fila.nombre) || local.nombre || nombreDe(sesion.user);
+  p.dueno = id;
+  E.progreso = p;
+  E.usuario = { id, email: sesion.user.email, nombre: p.nombre };
+  escribir(LOCAL, p);
+  fichaLista = true;
+  await subir();
 }
-async function subir() {
+async function subir(alIrse) {
+  // Nunca se sube nada sin haber leído antes lo que hay en la nube (si no, una copia vieja la pisaría)
+  if (!fichaLista) return cargarFicha();
   const tk = await token();
   if (!tk || !sesion.user) return;
+  pendiente = false;
   E.progreso.actualizado = new Date().toISOString();
-  await api('/rest/v1/jugadores?on_conflict=id', {
-    metodo: 'POST', token: tk,
-    cabeceras: { Prefer: 'resolution=merge-duplicates,return=minimal' },
-    cuerpo: { id: sesion.user.id, nombre: E.progreso.nombre || nombreDe(sesion.user), progreso: E.progreso, actualizado: E.progreso.actualizado },
-  });
+  escribir(LOCAL, E.progreso);
+  try {
+    await api('/rest/v1/jugadores?on_conflict=id', {
+      metodo: 'POST', token: tk, seguir: !!alIrse,
+      cabeceras: { Prefer: 'resolution=merge-duplicates,return=minimal' },
+      cuerpo: { id: sesion.user.id, nombre: E.progreso.nombre || nombreDe(sesion.user), progreso: E.progreso, actualizado: E.progreso.actualizado },
+    });
+  } catch (e) { pendiente = true; throw e; }
 }
-let subirT = null;
+let subirT = null, pendiente = false, fichaLista = false;
 function guardar() {
   E.progreso.actualizado = new Date().toISOString();
   escribir(LOCAL, E.progreso);
   if (!nube || !sesion) return;
+  pendiente = true;
   clearTimeout(subirT);
-  subirT = setTimeout(() => { subir().catch(e => { E.aviso = 'No se ha podido guardar en la nube; se guardará en cuanto haya conexión.'; console.warn(e); avisar(); }); }, 1200);
+  subirT = setTimeout(subirAhora, 1200);
+}
+function subirAhora(alIrse) {
+  clearTimeout(subirT); subirT = null;
+  if (!pendiente || !nube || !sesion) return;
+  subir(alIrse === true).catch(e => { if (alIrse === true) return; E.aviso = 'No se ha podido guardar en la nube; se guardará en cuanto haya conexión.'; console.warn(e); avisar(); });
+}
+// Si se cierra la app o se cambia de pestaña justo al acabar, lo que faltaba por subir se sube ya
+if (root.addEventListener) {
+  root.addEventListener('pagehide', () => subirAhora(true));
+  root.addEventListener('online', () => subirAhora());
+  if (root.document) root.document.addEventListener('visibilitychange', () => { if (root.document.visibilityState === 'hidden') subirAhora(true); });
 }
 
 // ---------------------------------------------------------------- Lo que puede hacer el jugador
@@ -162,6 +208,8 @@ const Cuenta = {
       else if (sesion) E.aviso = '¡Cuenta confirmada! Ya puedes jugar con tu cuenta.';
       try { history.replaceState(null, '', root.location.pathname + root.location.search); } catch (e) { /* nada */ }
     }
+    // Lo guardado aquí con una sesión abierta (de versiones anteriores, que no lo marcaban) es de esa cuenta
+    if (sesion && sesion.user && !E.progreso.dueno) E.progreso.dueno = sesion.user.id;
     if (sesion) {
       try { await cargarFicha(); } catch (e) { console.warn(e); if (sesion && sesion.user) E.usuario = { id: sesion.user.id, email: sesion.user.email, nombre: E.progreso.nombre || nombreDe(sesion.user) }; }
     }
@@ -194,6 +242,7 @@ const Cuenta = {
   async salir() {
     const tk = sesion && sesion.access_token;
     if (tk) api('/auth/v1/logout', { metodo: 'POST', token: tk }).catch(() => {});
+    clearTimeout(subirT); subirT = null; pendiente = false; fichaLista = false;
     guardarSesion(null);
     E.usuario = null;
     // En el dispositivo se queda un progreso de invitado limpio, para no mezclar cuentas

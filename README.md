@@ -30,6 +30,7 @@ src/                  Las piezas del juego
 supabase/esquema.sql  La tabla de jugadores y sus reglas de seguridad
 build.js              Junta src/ en docs/index.html (y en el-perro.html, para probar en local)
 test.js               Pruebas de las reglas
+test-cuenta.js        Pruebas de cómo se guarda y se junta el progreso (dispositivo y nube)
 config.ejemplo.js     Plantilla de docs/config.js
 ```
 
