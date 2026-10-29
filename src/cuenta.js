@@ -60,6 +60,10 @@ async function api(ruta, { metodo = 'GET', cuerpo, token, cabeceras = {} } = {})
 }
 function mensajeError(d, status) {
   const m = String((d && (d.error_description || d.msg || d.message || d.error)) || '').toLowerCase();
+  const cod = String((d && (d.error_code || d.code)) || '');
+  if (cod === 'over_email_send_rate_limit') return 'Ahora mismo no se pueden mandar más correos de confirmación. Prueba dentro de un rato.';
+  if (cod === 'email_address_not_authorized') return 'No se ha podido mandar el correo de confirmación a esa dirección.';
+  if (cod === 'signup_disabled') return 'Ahora mismo no se pueden crear cuentas nuevas.';
   if (m.includes('invalid login')) return 'Correo o contraseña incorrectos.';
   if (m.includes('already registered') || m.includes('already been registered')) return 'Ya hay una cuenta con ese correo. Prueba a entrar.';
   if (m.includes('email not confirmed')) return 'Falta confirmar el correo: abre el mensaje que te hemos enviado.';
@@ -142,6 +146,14 @@ const Cuenta = {
     if (!nube) { avisar(); return; }
     // Vuelta desde el correo: confirmación de la cuenta o cambio de contraseña (#access_token=...&type=...)
     const h = root.location && root.location.hash;
+    if (h && h.includes('error_code=')) {
+      // Un enlace del correo que ya no vale (caducado o usado dos veces)
+      const q = new URLSearchParams(h.slice(1));
+      E.aviso = q.get('error_code') === 'otp_expired'
+        ? 'Ese enlace del correo ya no vale (caduca enseguida y solo sirve una vez). Si ya lo abriste, entra con tu correo y tu contraseña.'
+        : 'Ese enlace del correo no ha funcionado. Prueba a entrar con tu correo y tu contraseña.';
+      try { history.replaceState(null, '', root.location.pathname + root.location.search); } catch (e) { /* nada */ }
+    }
     if (h && h.includes('access_token=')) {
       const q = new URLSearchParams(h.slice(1));
       guardarSesion({ access_token: q.get('access_token'), refresh_token: q.get('refresh_token'), expires_in: Number(q.get('expires_in')) || 3600 });
