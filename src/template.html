@@ -663,6 +663,13 @@ svg.capa { overflow: visible; }
 }
 .subida.nueva { animation: subida-entra .22s ease-out; }
 /* Mientras eliges, el selector va en el centro de la mesa, para que veas tus cartas */
+.menu-list .btn .aviso-salir { display: block; font-size: 12px; font-weight: 500; opacity: .8; margin-top: 2px; }
+/* Mesa con amigos: avisos solo para quien la abrió (devolver una silla) */
+.avisos-red { position: absolute; top: 8px; left: 8px; z-index: 8; display: grid; gap: 6px; max-width: min(78%, 360px); }
+.avisos-red:empty { display: none; }
+.aviso-red { text-align: left; font: inherit; font-size: 13px; line-height: 1.3; color: #2a1f10; background: #f4ecd8; border: 1.5px solid var(--oro); border-radius: 10px;
+  padding: 8px 10px; box-shadow: 0 6px 18px rgba(0,0,0,.4); cursor: pointer; }
+.aviso-red b { display: block; margin-top: 2px; color: #6b3d0c; }
 .reto-capa:has(.subida) { bottom: auto; top: 50%; transform: translateY(-56%); }
 .subida .btn { background: transparent; color: var(--tinta); border: 1.5px solid #b9a888; }
 .subida .btn.primary { background: var(--tinta); color: #fbf3e2; border-color: var(--tinta); }
@@ -894,7 +901,7 @@ tr.skip td { color: var(--tinta-2); text-decoration: line-through; }
               <label><input class="oculto" type="radio" name="length" value="juego"><span class="opcion-tiza">
                 <b>Un juego</b><small>a 40 chinas</small></span></label>
               <label><input class="oculto" type="radio" name="length" value="partida"><span class="opcion-tiza">
-                <b>Una partida</b><small>a tres vacas</small></span></label>
+                <b>Una partida</b><small>al mejor de tres vacas</small></span></label>
             </div>
           </fieldset>
           <button type="button" class="entrar-tiza" data-entrar>Entrar a jugar<svg viewBox="0 0 34 24" aria-hidden="true"><path d="M2 13 C10 12 20 12 30 12 M21 4 L31 12 L22 20" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
@@ -934,6 +941,7 @@ tr.skip td { color: var(--tinta-2); text-decoration: line-through; }
     <div class="luz" aria-hidden="true"></div>
     <div class="apuestas" id="apuestas" aria-live="polite"></div>
     <div class="reto-capa" id="reto"></div>
+    <div class="avisos-red" id="avisos-red"></div>
     <div class="anuncio" id="anuncio" aria-live="assertive"></div>
   </div>
   <div class="acciones" id="acciones">

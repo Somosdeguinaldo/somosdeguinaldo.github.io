@@ -68,6 +68,8 @@ if (N) N.montar();
 function cardHTML(id, size = 'sm chica', extra = '', style = '', mirar = '') {
   // mirar: atributos para poder verla de cerca (las cartas boca arriba de la mesa)
   const c = P.card(id);
+  // En la mesa con amigos, las cartas de los demás no están en este móvil: solo se pinta el dorso
+  if (!c) return `<span class="card ${size} ${extra.replace(/\bback\b/g, '')} back" ${style ? `style="${style}"` : ''} role="img" aria-label="carta boca abajo"><svg class="dorso" viewBox="0 0 ${N.W} ${N.H}" aria-hidden="true"><use href="#n-dorso"/></svg></span>`;
   const back = /\bback\b/.test(extra) || /\bback\b/.test(size);
   const label = back ? 'carta boca abajo' : P.cardName(c);
   return `<span class="card ${size} ${extra}" ${style ? `style="${style}"` : ''} ${back ? '' : `title="${esc(cap(P.cardName(c)))}"`} ${mirar ? `${mirar} role="button" tabindex="0" aria-label="${esc(`Ver de cerca el ${label}`)}"` : `role="img" aria-label="${esc(label)}"`}>${N.html(c.id)}</span>`;
@@ -149,7 +151,7 @@ function step() {
   const p = g.pending;
   const R = enRed() ? S.red : null;
   // En la mesa con amigos, lo que llega por la red se aplica cuando la mesa está quieta (como haría el ordenador)
-  if (R && R.cola.length && !(p.type === 'jugadaEnd' && !discarded())) { programarRemoto(); return; }
+  if (R && R.cola.length && !R.faltanManos && !(p.type === 'jugadaEnd' && !discarded())) { programarRemoto(); return; }
   if (p.type === 'jugadaEnd') {
     if (!discarded()) startDiscard();
     else if (S.tuto) S.tuto.finJugada();
@@ -158,7 +160,8 @@ function step() {
   }
   if (p.type === 'partidaEnd') { if (S.overlay !== 'end') openSheet('end'); return; }
   if (needsHuman(p)) return;
-  if (R && (!R.anfitrion || esperaRemoto(p))) return; // el invitado espera al anfitrión; el anfitrión, a sus amigos
+  if (R && !R.anfitrion) return;                       // el invitado espera al anfitrión
+  if (R && esperaRemoto(p)) { vigilarTurno(p); return; } // el anfitrión, a sus amigos (pero no para siempre)
   const wait = Math.max(delay(), S.bannerUntil - performance.now() + 120);
   S.timer = setTimeout(() => {
     if (S.game !== g || S.animating || flying() || pausado()) return;
@@ -167,11 +170,19 @@ function step() {
     step();
   }, wait);
 }
-// Toda jugada pasa por aquí; si llevas la mesa con amigos, además se la mandas a los demás
+// Toda jugada pasa por aquí; si llevas la mesa con amigos, además se la mandas a los demás (con lo que no pueden
+// calcular porque no ven las cartas) y, si empieza otra jugada, a cada uno sus cartas
 function aplicar(a) {
-  S.game.act(a);
-  const R = S.red;
-  if (R && R.jugando && R.anfitrion) { R.n++; R.log.push(a); MESA.enviar('accion', { n: R.n, a }); }
+  const g = S.game, R = S.red, red = !!(R && R.jugando && R.anfitrion);
+  const f = red ? g.foto() : null;
+  g.act(a);
+  if (!red) return;
+  const pista = g.pistaDesde(f);
+  if (pista.nueva) mandarPrivados();
+  R.n++;
+  const x = Object.keys(pista).length ? { a, pista } : { a };
+  R.log.push(x);
+  MESA.enviar('accion', Object.assign({ n: R.n }, x));
 }
 function humanAct(action) {
   if (S.tuto && !S.tuto.permite(action)) { render(); return; }
@@ -185,12 +196,14 @@ function humanAct(action) {
   step();
 }
 function humanRespond(kind, amount) {
-  const g = S.game, p = g.pending;
-  const answers = AI.teamAnswers(g, p);
-  answers[HUMAN] = { kind, amount };
-  // En la mesa con amigos, si tu compañero también es de carne y hueso, contestas por la pareja
-  if (enRed()) for (const s of p.seats) if (s !== HUMAN && !S.red.bots.has(s) && !S.red.config.asientos[s].bot) answers[s] = { kind, amount };
-  humanAct(p.type === 'respond' ? { type: 'respond', responses: answers } : { type: 'florDecide', decisions: answers });
+  const g = S.game, p = g.pending, resp = amount != null ? { kind, amount } : { kind };
+  if (enRed() && !S.red.anfitrion) {
+    // El invitado solo dice lo suyo: lo de la gente del bar lo decide el anfitrión, que es quien ve sus cartas
+    const mia = { [HUMAN]: resp };
+    humanAct(p.type === 'respond' ? { type: 'respond', responses: mia } : { type: 'florDecide', decisions: mia });
+    return;
+  }
+  humanAct(respuestaDePareja(p, HUMAN, resp));
 }
 function humanPlay(id) {
   const ids = S.game.jugada.hands[HUMAN];
@@ -212,10 +225,14 @@ function resetTable() {
   $('#reto').innerHTML = '';
   $('#apuestas').innerHTML = '';
 }
+// Salir de una partida a medias (después de jugar alguna jugada) cuenta como perdida; el tutorial no cuenta
+const partidaAMedias = () => !!(S.game && !S.game.over && !S.tuto);
 function startGame(mode, extra = {}) {
+  if (CU && partidaAMedias()) CU.abandonar();
   HUMAN = extra.yo != null ? extra.yo : 0;
   resetTable();
   S.game = new P.Game(Object.assign({ mode, length: S.length, humans: [HUMAN] }, extra));
+  if (CU && !extra.rigged) CU.empezarPartida(mode, !!(S.red && S.red.jugando));
   $('#menu').hidden = true;
   $('#game').hidden = false;
   closeSheet();
@@ -226,6 +243,7 @@ function startGame(mode, extra = {}) {
   step();
 }
 function toMenu() {
+  if (CU && partidaAMedias()) CU.abandonar();
   terminarTutorial();
   resetTable();
   SON.enBar(false);
@@ -496,7 +514,7 @@ function recoger(J, done) {
 // ---------- Carteles: ¡Truque!, ¡Envido!, ¡Flor!...
 function humanPlays() { return S.game.jugada.participants.includes(HUMAN); }
 function bannerContent(e) {
-  const g = S.game, me = e.seat === HUMAN, name = g.name(e.seat), four = g.n === 4;
+  const g = S.game, me = e.seat === HUMAN, name = g.name(e.seat), four = g.n === 4 && g.jugada.kind === 'team';
   const rival = humanPlays() && g.teamOf(e.seat) !== g.humanTeam();
   const os = four ? 'Os' : 'Te';
   const ch = n => `${n} ${n === 1 ? 'china' : 'chinas'}`;
@@ -508,7 +526,7 @@ function bannerContent(e) {
     case 'raise': return { big: '¡Y yo!', sub: me ? `Subes a ${ch(e.amount)}` : rival ? `${name} ${four ? 'os' : 'te'} sube a ${ch(e.amount)}` : `${name} sube a ${ch(e.amount)}`, cls: kindCls(e.betKind), shake: rival };
     case 'falta': return { big: '¡La falta!', sub: me ? `Echas la falta · ${ch(e.amount)}` : `${name} echa la falta · ${ch(e.amount)}`, cls: 'k-falta', shake: rival };
     case 'quiero': return { big: '¡Quiero!', sub: me ? `Quieres · van ${ch(e.amount)}` : `${name} quiere · van ${ch(e.amount)}`, cls: 'k-quiero' };
-    case 'noquiero': return { big: 'No quiero', sub: `${me ? 'No quieres' : name + ' no quiere'}. ${g.teamVerb(e.toTeam, 'cobra', 'cobras', 'cobramos', 'cobran')} ${ch(e.pts)}.`, cls: 'k-no' };
+    case 'noquiero': return { big: 'No quiero', sub: `${me ? 'No quieres' : name + ' no quiere'}. ${g.teamVerb(e.toTeam, 'cobra', 'cobras', 'cobramos', 'cobran', true)} ${ch(e.pts)}.`, cls: 'k-no' };
     case 'florEnvidar': return { big: '¡Envido la flor!', sub: me ? 'Envidas tu flor' : `${name} envida su flor`, cls: 'k-flor', shake: rival };
     case 'florPasar': return { big: 'Paso la flor', sub: me ? 'Pasas tu flor' : `${name} pasa su flor`, cls: 'k-no' };
     case 'mazo': return { big: 'Al mazo', sub: me ? 'Te vas al mazo' : `${name} se va al mazo`, cls: 'k-no' };
@@ -610,7 +628,8 @@ function tickCig(now) {
       cigEls.box.classList.remove('nuevo'); void cigEls.box.offsetWidth; cigEls.box.classList.add('nuevo');
     }
     const paused = pausado();
-    if (!paused) c.used += Math.min(250, now - c.last);
+    // Jugando solo, si la app se va a segundo plano el cigarro se para; en la mesa con amigos sigue corriendo
+    if (!paused) c.used += enRed() ? Math.max(0, now - c.last) : Math.min(250, now - c.last);
     c.last = now;
     const total = tiempoTurno() * 1000;
     c.frac = Math.max(0, 1 - c.used / total);
@@ -652,6 +671,7 @@ function render() {
   renderRivales();
   renderAbanico();
   renderAcciones();
+  renderAvisosRed();
   renderLog();
   if (S.tuto) S.tuto.render();
   if (S.cola.length && !S.volando) volarSiguiente();
@@ -842,7 +862,7 @@ function selectorSubida(titulo, actual, max) {
 // Posavasos: los cantos
 const pv = (cls, data, label, sub, r, square) => `<button type="button" class="pv ${cls}${square ? ' cuadrado' : ''}" ${data} style="--r:${r}deg">${label}${sub ? `<small>${sub}</small>` : ''}</button>`;
 function renderAcciones() {
-  const g = S.game, p = g.pending, J = g.jugada, os = g.n === 4;
+  const g = S.game, p = g.pending, J = g.jugada, os = g.n === 4 && J.kind === 'team';
   let inf = '', coasters = '', reto = '';
   if (!J.participants.includes(HUMAN)) inf = `No juegas esta jugada: miras el mano a mano entre ${esc(g.name(J.participants[0]))} y ${esc(g.name(J.participants[1]))}.`;
   else if (!discarded()) {
@@ -887,7 +907,8 @@ function renderAcciones() {
       title = p.count > 1 ? `${os ? 'Os suben' : 'Te suben'} el ${p.bet}` : `¡${os ? 'Os han' : 'Te han'} ${w}ado!`;
       cls = p.bet === 'envido' ? 'k-envido' : 'k-truque';
     }
-    const quien = os ? 'cobran ellos' : `cobra ${g.name(p.callerTeam)}`;
+    const rival = J.participants.find(x => g.teamOf(x) === p.callerTeam);
+    const quien = os ? 'cobran ellos' : `cobra ${g.name(rival != null ? rival : p.callerTeam)}`;
     const cuanto = `${lose} ${lose === 1 ? 'china' : 'chinas'}${p.reabierto ? ', lo que ya estaba querido' : ''}`;
     reto = `<div class="reto ${cls}" role="status"><b>${esc(title)}</b><span>${esc(`Van ${p.amount} chinas · si no quieres, ${quien} ${cuanto}`)}</span></div>`;
     coasters += pv('pv-quiero', 'data-resp="quiero"', 'Quiero', '', -4);
@@ -1062,7 +1083,7 @@ function summaryHTML(s) {
   let reason;
   if (s.reason === 'mazo') reason = `${g.verb(s.mazo.seat, 'se fue', 'te fuiste')} al mazo.`;
   else if (s.reason === 'truque') reason = 'No se quiso el truque: la jugada acaba aquí.';
-  else reason = `${cap(g.winsText(s.bazaWinner))} las bazas.`;
+  else reason = `${cap(g.winsText(s.bazaWinner, true))} las bazas.`;
   const parts = s.participants;
   let bazas = '';
   if (s.bazas.length) {
@@ -1128,6 +1149,7 @@ function endHTML() {
 }
 
 function menuHTML() {
+  const pierdes = CU && CU.partidaEnCurso() ? '<small class="aviso-salir">La partida contará como perdida</small>' : '';
   return `<h2>Partida en pausa</h2>
     <div class="menu-list">
       <button class="btn primary" type="button" data-close>Seguir jugando</button>
@@ -1138,7 +1160,7 @@ function menuHTML() {
       <button class="btn" type="button" data-toggle-musica aria-pressed="${S.musica}">Música de bar: ${S.musica ? 'sí' : 'no'}</button>
       <button class="btn" type="button" data-toggle-efectos aria-pressed="${S.efectos}">Efectos de sonido: ${S.efectos ? 'sí' : 'no'}</button>
       <button class="btn" type="button" data-toggle-ambiente aria-pressed="${S.ambiente}">Ruido del bar: ${S.ambiente ? 'sí' : 'no'}</button>
-      ${enRed() ? `<button class="btn" type="button" data-mesa-salir>Levantarme de la mesa${S.red.anfitrion ? ' (y cerrarla)' : ''}</button>` : '<button class="btn" type="button" data-menu>Salir a la puerta del bar</button>'}
+      ${enRed() ? `<button class="btn" type="button" data-mesa-salir>Levantarme de la mesa${S.red.anfitrion ? ' (y cerrarla)' : ''}${pierdes}</button>` : `<button class="btn" type="button" data-menu>Salir a la puerta del bar${pierdes}</button>`}
     </div>`;
 }
 
@@ -1180,9 +1202,11 @@ function helpHTML() {
 }
 
 // ================================================================ La mesa del fondo: jugar con amigos
-// Quien abre la mesa (el anfitrión) lleva la partida: reparte con una semilla (todos tienen las mismas cartas),
-// decide por la gente del bar y manda cada jugada numerada. Los demás le piden sus jugadas y aplican las que llegan,
-// en orden, cuando su mesa está quieta. Si alguien se queda atrás o vuelve, se le manda todo y se pone al día.
+// Quien abre la mesa (el anfitrión) lleva la partida entera: baraja, reparte, decide por la gente del bar y manda cada
+// jugada numerada, con una «pista» de lo que los demás no pueden calcular porque no ven las cartas (quién canta flor al
+// responder, los ligados dichos en voz alta, las flores que se enseñan). A cada uno le manda sus cartas cifradas, solo
+// para él: nadie más puede verlas. Los demás le piden sus jugadas y aplican las que llegan, en orden, cuando su mesa está
+// quieta. Si alguien se queda atrás o vuelve, se le manda todo y se pone al día. (mesa.js comprueba quién manda cada cosa.)
 const MESA = window.PerroMesa || null;
 const BOTS_RED = { '1v1': ['Tío Basilio'], '2v2': ['Fermín', 'Maribel', 'Tío Basilio'] };
 const sillasDe = modo => (modo === '2v2' ? 4 : 2);
@@ -1197,9 +1221,17 @@ function nuevaRed(anfitrion, codigo, apodo) {
     anfitrion, codigo, apodo, modo: S.modo, largo: S.length, sitios: [null, null, null, null], apodos: {}, presentes: [], sel: null,
     jugando: false, enPartida: false, config: null, n: 0, log: [], cola: [], bots: new Set(), listos: new Set(), listosVistos: [],
     listoYo: false, esperando: false, mio: 0, ronda: 0, vioAnfitrion: anfitrion, plazo: null, plazoListos: null,
+    manos: {}, privado: {}, esperaEmpieza: null, faltanManos: false, plazoManos: null, pedido: 0, vigila: null, ofertas: [],
   };
 }
 const quitarEnlace = () => { try { if (/mesa=/.test(location.hash)) history.replaceState(null, '', location.pathname + location.search); } catch (e) { /* nada */ } };
+// ¿De quién decide el ordenador? De la gente del bar y de los que se han levantado (mientras vuelven)
+function manejaOrdenador(s) {
+  const R = enRed() ? S.red : null;
+  if (!R) return !S.game.isHuman(s);
+  const a = R.config.asientos[s];
+  return !!(a && (a.bot || R.bots.has(s)));
+}
 
 async function abrirMesa() {
   const apodo = limpiarApodo($('#mesa-apodo') && $('#mesa-apodo').value);
@@ -1221,8 +1253,10 @@ async function unirseMesa() {
   if (!MESA.valido(codigo)) { S.mesaAviso = `El código son ${MESA.LARGO} letras o números, como K7QXM.`; S.mesaCodigo = codigo; openSheet('mesa'); return; }
   guardarApodo(apodo);
   S.mesaAviso = ''; S.mesaOcupada = 'Buscando la mesa…'; openSheet('mesa');
+  // Si se entra con el enlace, sus letras de más sirven para comprobar que la mesa es de quien la abrió
+  const huella = codigo === MESA.codigoDelEnlace() ? MESA.huellaDelEnlace() : '';
   try {
-    await MESA.unirse(codigo, apodo);
+    await MESA.unirse(codigo, apodo, huella);
     S.red = nuevaRed(false, codigo, apodo);
     quitarEnlace();
     // Si no aparece quien abrió la mesa, es que no hay ninguna con ese código
@@ -1234,10 +1268,15 @@ async function unirseMesa() {
   S.mesaOcupada = '';
   openSheet('mesa');
 }
+function pararRelojes(R) {
+  clearTimeout(R.plazo); clearTimeout(R.plazoListos); clearTimeout(R.plazoManos);
+  if (R.vigila) clearTimeout(R.vigila.t);
+  R.vigila = null;
+}
 function dejarMesa() {
   const R = S.red;
   if (!R) return;
-  clearTimeout(R.plazo); clearTimeout(R.plazoListos);
+  pararRelojes(R);
   if (R.anfitrion) MESA.enviar('cierra', {});
   S.red = null;
   MESA.salir();
@@ -1245,9 +1284,11 @@ function dejarMesa() {
 function finMesa(texto) {
   const R = S.red;
   if (!R) return;
-  clearTimeout(R.plazo); clearTimeout(R.plazoListos);
+  pararRelojes(R);
   S.red = null;
   MESA.salir();
+  // No es culpa de nadie de los que se quedan: esa partida no cuenta
+  if (S.game && CU) CU.olvidarPartida();
   if (S.game) toMenu();
   S.mesaAviso = texto;
   openSheet('mesa');
@@ -1279,29 +1320,89 @@ function repartirMesa() {
     asientos.push(id ? { id, apodo: R.apodos[id] || 'Alguien' } : { bot: libres.shift() || 'Fermín' });
   }
   R.ronda++;
-  const config = { seed: 1 + Math.floor(Math.random() * 2147483646), modo: R.modo, largo: R.largo, asientos, ronda: R.ronda, tiempo: S.turnTime || 0 };
-  MESA.enviar('empieza', config);
-  empezarEnRed(config, null, null);
+  // Sin semilla: la baraja solo está en el móvil del anfitrión. El corte (público) y las cartas van luego.
+  empezarEnRed({ modo: R.modo, largo: R.largo, asientos, ronda: R.ronda, tiempo: S.turnTime || 0 }, null, null);
 }
+const claveManos = (ronda, nj) => `${ronda}:${nj}`;
 function empezarEnRed(config, acciones, bots) {
   const R = S.red, mio = config.asientos.findIndex(a => a.id === MESA.miId());
   if (mio < 0) { R.enPartida = true; if (S.overlay === 'mesa') openSheet('mesa'); return; } // de pie en la barra: entra en la próxima
-  clearTimeout(R.plazo); clearTimeout(R.plazoListos);
+  // Sin mis cartas no puedo sentarme: espero a que lleguen (y si tardan, pido que me pongan al día)
+  if (!R.anfitrion && !R.manos[claveManos(config.ronda || 1, 1)]) {
+    R.esperaEmpieza = { config, acciones, bots };
+    clearTimeout(R.plazoManos);
+    R.plazoManos = setTimeout(() => { if (S.red === R && R.esperaEmpieza) pedirEstado(true); }, 5000);
+    return;
+  }
+  R.esperaEmpieza = null;
+  pararRelojes(R);
   Object.assign(R, {
     config, jugando: true, enPartida: true, mio, n: 0, log: [], cola: [], listos: new Set(), listosVistos: [], listoYo: false, esperando: false,
-    ronda: config.ronda || 1, plazoListos: null,
+    ronda: config.ronda || 1, plazoListos: null, faltanManos: false, ofertas: [],
     bots: new Set(bots || config.asientos.map((a, i) => (a.bot ? i : -1)).filter(i => i >= 0)),
   });
+  if (R.anfitrion) R.privado = {};
   const names = config.asientos.map((a, i) => (i === mio ? 'Tú' : a.apodo || a.bot));
+  const personas = config.asientos.map((a, i) => (a.bot ? -1 : i)).filter(i => i >= 0);
+  const opciones = { names, humans: [mio], yo: mio, length: config.largo, personas };
+  if (!R.anfitrion) opciones.oculto = { corte: config.corte, ve: [mio], datos: nj => R.manos[claveManos(R.ronda, nj)] };
   const arrancar = () => {
     if (S.red !== R) return;
-    startGame(config.modo, { seed: config.seed, names, humans: [mio], yo: mio, length: config.largo });
-    if (acciones && acciones.length) {
-      for (const a of acciones) { try { S.game.act(a); } catch (e) { console.error(e); break; } R.n++; R.log.push(a); }
+    startGame(config.modo, opciones);
+    if (R.anfitrion) {
+      R.config.corte = S.game.corte;
+      mandarPrivados();               // a cada uno, sus cartas de la primera jugada (cifradas, solo para él)
+      MESA.enviar('empieza', R.config);
+    } else if (acciones && acciones.length) {
+      const g = S.game;
+      for (const x of acciones) {
+        try { g.pista = x.pista || {}; g.act(x.a); } catch (e) { console.error(e); g.pista = {}; break; }
+        g.pista = {};
+        R.n++; R.log.push(x);
+      }
       ponerAlDia();
     }
   };
   if ($('#game').hidden) { closeSheet(); entrar(arrancar); } else { closeSheet(); arrancar(); }
+}
+// El anfitrión guarda y manda a cada uno lo suyo de la jugada que empieza: sus cartas y, si va con alguien del bar, sus señas
+function mandarPrivados() {
+  const R = S.red, g = S.game;
+  R.config.asientos.forEach((a, i) => {
+    if (a.bot || i === R.mio || !a.id) return;
+    const d = Object.assign({ ronda: R.ronda }, g.privadoPara(i));
+    (R.privado[i] = R.privado[i] || {})[d.nj] = d;
+    MESA.enviar('mano', d, a.id, { secreto: true });
+  });
+}
+function mandarEstado(id) {
+  const R = S.red, sitio = R.config ? R.config.asientos.findIndex(a => a.id === id) : -1;
+  if (sitio < 0) return;
+  MESA.enviar('manos', { ronda: R.ronda, todas: R.privado[sitio] || {} }, id, { secreto: true });
+  MESA.enviar('estado', { config: R.config, acciones: R.log, bots: [...R.bots] }, id);
+}
+// El invitado pide que le pongan al día (como mucho una vez cada dos segundos)
+function pedirEstado(ya) {
+  const R = S.red;
+  if (!R || R.anfitrion) return;
+  const ahora = performance.now();
+  if (!ya && ahora - R.pedido < 2000) return;
+  R.pedido = ahora;
+  MESA.enviar('dame', { n: R.n });
+}
+function guardarManos(d) {
+  const R = S.red;
+  if (!d || !d.nj) return;
+  R.manos[claveManos(d.ronda || R.ronda, d.nj)] = { nj: d.nj, cartas: Array.isArray(d.cartas) ? d.cartas.filter(id => P.card(id)) : [], senas: Array.isArray(d.senas) ? d.senas.map(String) : null };
+}
+function llegaronManos() {
+  const R = S.red;
+  if (R.esperaEmpieza && R.manos[claveManos(R.esperaEmpieza.config.ronda || 1, 1)]) {
+    const e = R.esperaEmpieza;
+    empezarEnRed(e.config, e.acciones, e.bots);
+    return;
+  }
+  if (R.faltanManos) { R.faltanManos = false; clearTimeout(R.plazoManos); if (S.game && !S.animating && !flying()) step(); }
 }
 // Tras ponerse al día de golpe: lo que ya estaba en la mesa no vuela otra vez ni se repiten los carteles
 function ponerAlDia() {
@@ -1319,7 +1420,10 @@ function volverALaMesa() {
   const R = S.red;
   if (!R) return;
   R.jugando = false; R.enPartida = false; R.config = null; R.cola = [];
-  clearTimeout(R.plazoListos);
+  pararRelojes(R);
+  // Lo decide quien abrió la mesa: si la partida acabó, se apunta (por si no dio tiempo a ver el final); si no, no cuenta
+  if (S.game && S.game.over && S.game.pending && S.game.pending.type === 'partidaEnd') apuntarPartida();
+  else if (CU && S.game) CU.olvidarPartida();
   terminarTutorial(); resetTable(); S.game = null;
   SON.enBar(false);
   $('#game').hidden = true; $('#menu').classList.remove('entrando'); $('#menu').hidden = false; encuadrarBar();
@@ -1330,7 +1434,7 @@ function volverALaMesa() {
 // ---------- Lo que llega por la red
 function meterEnCola(m) {
   const R = S.red;
-  if (m.n <= R.n || R.cola.some(x => x.n === m.n)) return;
+  if (!m || !(m.n > R.n) || R.cola.some(x => x.n === m.n)) return;
   R.cola.push(m);
   R.cola.sort((a, b) => a.n - b.n);
 }
@@ -1344,34 +1448,106 @@ function programarRemoto() {
     step();
   }, wait);
 }
+// Lo que se apunta de quien se queda sin tiempo (o tarda demasiado): cada móvil lo cuenta a su manera
+function avisoAusentes(a) {
+  const g = S.game;
+  if (!a || !Array.isArray(a.ausentes) || !a.ausentes.length) return;
+  for (const s of a.ausentes) {
+    if (!g.players[s]) continue;
+    const yo = s === HUMAN;
+    const txt = a.porTiempo
+      ? (yo ? 'Se te ha acabado el cigarro.' : `A ${g.name(s)} se le ha acabado el cigarro.`)
+      : (yo ? 'Tardabas mucho: por esta vez ha decidido el ordenador.' : `${g.name(s)} tarda mucho: por esta vez decide el ordenador.`);
+    g.log(txt, { kind: 'info' });
+  }
+}
 function aplicarDelAnfitrion(m) {
-  const R = S.red;
+  const R = S.red, g = S.game;
   if (m.n <= R.n) return;
-  if (m.n !== R.n + 1) { R.cola = []; MESA.enviar('dame', { n: R.n }); return; }
-  try { S.game.act(m.a); }
-  catch (e) { console.error(e); R.cola = []; MESA.enviar('dame', { n: R.n }); return; }
-  R.n = m.n; R.log.push(m.a); R.esperando = false;
+  if (m.n !== R.n + 1) { R.cola = []; pedirEstado(); return; }
+  // Empieza otra jugada: hacen falta mis cartas (llegan aparte, cifradas)
+  if (m.pista && m.pista.nueva && !R.manos[claveManos(R.ronda, m.pista.nueva)]) {
+    R.cola.unshift(m);
+    R.faltanManos = true;
+    clearTimeout(R.plazoManos);
+    R.plazoManos = setTimeout(() => { if (S.red === R && R.faltanManos) { R.faltanManos = false; R.cola = []; pedirEstado(true); } }, 5000);
+    return;
+  }
+  avisoAusentes(m.a);
+  try { g.pista = m.pista || {}; g.act(m.a); }
+  catch (e) { console.error(e); g.pista = {}; R.cola = []; pedirEstado(); return; }
+  g.pista = {};
+  R.n = m.n; R.log.push(m.pista ? { a: m.a, pista: m.pista } : { a: m.a }); R.esperando = false;
   if (m.a.type === 'continue') { R.listoYo = false; R.listosVistos = []; if (S.overlay === 'summary') closeSheet(); }
 }
+// Solo lo que se puede pedir, y bien formado
+const TIPOS_TURNO = ['play', 'flor', 'envido', 'truque', 'envidoTruque', 'subir', 'mazo'];
+const TIPOS_RESPUESTA = ['quiero', 'noquiero', 'raise', 'falta', 'envidar', 'pasar'];
+function respuestaDePareja(p, quien, resp) {
+  // Contestas por la pareja si tu compañero es de carne y hueso; por los del ordenador decide el ordenador
+  const g = S.game, todas = AI.teamAnswers(g, p, manejaOrdenador);
+  for (const s of p.seats) if (!manejaOrdenador(s)) todas[s] = resp;
+  if (!todas[quien]) todas[quien] = resp;
+  return p.type === 'respond' ? { type: 'respond', responses: todas } : { type: 'florDecide', decisions: todas };
+}
 function atenderPeticion(m) {
-  const R = S.red, p = S.game.pending, a = m.a || {};
+  const R = S.red, g = S.game, p = g.pending, a = (m && m.a) || {};
   const sitio = R.config.asientos.findIndex(x => x.id === m.de);
-  let vale = sitio >= 0 && !R.bots.has(sitio);
-  if (vale) {
-    if (p.type === 'turn') vale = a.seat === sitio && p.seat === sitio;
-    else if (p.type === 'respond') vale = a.type === 'respond' && p.seats.includes(sitio);
-    else if (p.type === 'florDecide') vale = a.type === 'florDecide' && p.seats.includes(sitio);
-    else vale = false;
+  let accion = null;
+  if (sitio >= 0 && !manejaOrdenador(sitio) && p) {
+    if (p.type === 'turn' && p.seat === sitio && a.seat === sitio && TIPOS_TURNO.includes(a.type)) {
+      accion = { type: a.type, seat: sitio };
+      if (a.type === 'play') accion.card = String(a.card);
+      if (a.type === 'subir') accion.amount = Math.floor(Number(a.amount)) || 1;
+    } else if ((p.type === 'respond' || p.type === 'florDecide') && p.seats.includes(sitio)) {
+      const mia = ((p.type === 'respond' ? a.responses : a.decisions) || {})[sitio];
+      if (mia && TIPOS_RESPUESTA.includes(mia.kind)) accion = respuestaDePareja(p, sitio, mia.kind === 'raise' ? { kind: 'raise', amount: Math.floor(Number(mia.amount)) || 1 } : { kind: mia.kind });
+    }
   }
-  if (vale) { try { aplicar(a); return; } catch (e) { console.error(e); } }
+  if (accion) { try { aplicar(accion); return; } catch (e) { console.error(e); } }
   MESA.enviar('rechazo', { n: R.n }, m.de);
 }
 // ¿Tiene que decidir alguien de la mesa que no está en este móvil? (el anfitrión le espera)
-function esperaRemoto(p) {
-  const R = S.red, remoto = s => s !== HUMAN && !R.bots.has(s) && !R.config.asientos[s].bot;
-  if (p.type === 'turn') return remoto(p.seat);
-  if (p.type === 'respond' || p.type === 'florDecide') return p.seats.some(remoto);
-  return false;
+function remotosEn(p) {
+  const R = S.red, remoto = s => s !== HUMAN && !manejaOrdenador(s);
+  if (p.type === 'turn') return remoto(p.seat) ? [p.seat] : [];
+  if (p.type === 'respond' || p.type === 'florDecide') return p.seats.filter(remoto);
+  return [];
+}
+const esperaRemoto = p => remotosEn(p).length > 0;
+// El anfitrión no espera para siempre: si a alguien se le apaga el móvil o se le va la app a segundo plano, al acabarse
+// su cigarro (y unos segundos más, por si va lento) decide por él como si se le hubiera acabado; sin límite de tiempo,
+// a los tres minutos decide el ordenador por esa vez
+function vigilarTurno(p) {
+  const R = S.red, g = S.game;
+  if (R.vigila && R.vigila.p === p) return;
+  if (R.vigila) clearTimeout(R.vigila.t);
+  R.vigila = null;
+  if (needsHuman(p)) return;   // el anfitrión también decide: manda su cigarro (y contesta por la pareja)
+  const t = tiempoTurno();
+  R.vigila = {
+    p,
+    t: setTimeout(() => {
+      if (S.red !== R || S.game !== g || g.pending !== p || S.animating || flying()) { if (R.vigila && R.vigila.p === p) R.vigila = null; step(); return; }
+      actuarPorAusentes(p, t > 0);
+      step();
+    }, t > 0 ? t * 1000 + 8000 : 180000),
+  };
+}
+function actuarPorAusentes(p, porTiempo) {
+  const g = S.game, ausentes = remotosEn(p);
+  if (!ausentes.length) return;
+  let a;
+  if (!porTiempo) a = AI.decide(g);
+  else if (p.type === 'turn') a = p.mustFlor ? { type: 'flor', seat: p.seat } : { type: 'play', seat: p.seat, card: p.cards.slice().sort((x, y) => P.truqueRank(P.card(x)) - P.truqueRank(P.card(y)))[0] };
+  else {
+    const todas = AI.teamAnswers(g, p, manejaOrdenador);
+    for (const s of ausentes) todas[s] = { kind: p.type === 'respond' ? 'noquiero' : 'pasar' };
+    a = p.type === 'respond' ? { type: 'respond', responses: todas } : { type: 'florDecide', decisions: todas };
+  }
+  a.ausentes = ausentes; a.porTiempo = !!porTiempo;
+  avisoAusentes(a);
+  try { aplicar(a); } catch (e) { console.error(e); }
 }
 // Al acabar cada jugada, se sigue cuando todos han dado a «Seguir» (o al rato, si alguien se ha dormido)
 function humanosEnMesa() {
@@ -1403,21 +1579,24 @@ function comprobarListos() {
 }
 function quienesFaltan() {
   const R = S.red, listos = new Set(R.anfitrion ? R.listos : R.listosVistos);
-  return humanosEnMesa().filter((a, i) => a.id !== MESA.miId() && !listos.has(a.id)).map(a => a.apodo);
+  return humanosEnMesa().filter(a => a.id !== MESA.miId() && !listos.has(a.id)).map(a => a.apodo);
 }
 function recibirMensaje(m) {
   const R = S.red;
   if (!R) return;
   const d = m.datos || {};
+  // mesa.js ya ha comprobado la firma: lo del anfitrión es del anfitrión, y lo de cada invitado, de ese invitado
   switch (m.tipo) {
     case 'mesa':
       if (R.anfitrion) return;
-      Object.assign(R, { modo: d.modo, largo: d.largo, sitios: d.sitios || R.sitios, enPartida: !!d.jugando });
-      Object.assign(R.apodos, d.apodos || {});
+      Object.assign(R, { modo: d.modo === '2v2' ? '2v2' : '1v1', largo: d.largo === 'partida' ? 'partida' : 'juego', sitios: Array.isArray(d.sitios) ? d.sitios : R.sitios, enPartida: !!d.jugando });
+      for (const k in d.apodos || {}) R.apodos[k] = limpiarApodo(d.apodos[k]);
       if (!R.jugando && S.overlay === 'mesa') openSheet('mesa');
       return;
     case 'empieza': if (!R.anfitrion) empezarEnRed(d, null, null); return;
     case 'estado': if (!R.anfitrion && d.config) empezarEnRed(d.config, d.acciones || [], d.bots); return;
+    case 'mano': if (!R.anfitrion) { guardarManos(d); llegaronManos(); } return;
+    case 'manos': if (!R.anfitrion) { for (const k in d.todas || {}) guardarManos(Object.assign({ ronda: d.ronda }, d.todas[k])); llegaronManos(); } return;
     case 'accion':
       if (R.anfitrion || !R.jugando) return;
       meterEnCola(d);
@@ -1429,13 +1608,13 @@ function recibirMensaje(m) {
       if (!S.animating && !flying()) step();
       return;
     case 'rechazo': if (!R.anfitrion) { R.esperando = false; render(); } return;
-    case 'listo': if (R.anfitrion && R.jugando) { R.listos.add(m.de); comprobarListos(); if (S.overlay === 'summary') openSheet('summary'); } return;
-    case 'listos': if (!R.anfitrion) { R.listosVistos = d.ids || []; if (S.overlay === 'summary') openSheet('summary'); } return;
-    case 'dame': if (R.anfitrion && R.jugando) MESA.enviar('estado', { config: R.config, acciones: R.log, bots: [...R.bots] }, m.de); return;
+    case 'listo': if (R.anfitrion && R.jugando && R.config.asientos.some(a => a.id === m.de)) { R.listos.add(m.de); comprobarListos(); if (S.overlay === 'summary') openSheet('summary'); } return;
+    case 'listos': if (!R.anfitrion) { R.listosVistos = Array.isArray(d.ids) ? d.ids : []; if (S.overlay === 'summary') openSheet('summary'); } return;
+    case 'dame': if (R.anfitrion && R.jugando) mandarEstado(m.de); return;
     case 'sustituto':
-      if (R.anfitrion || !R.jugando) return;
+      if (R.anfitrion || !R.jugando || !R.config.asientos[d.sitio]) return;
       if (d.bot) R.bots.add(d.sitio); else R.bots.delete(d.sitio);
-      if (d.id && R.config.asientos[d.sitio]) R.config.asientos[d.sitio].id = d.id;
+      if (d.id) R.config.asientos[d.sitio].id = d.id;
       avisoRed(d.sitio, !!d.bot);
       return;
     case 'alaMesa': if (!R.anfitrion) volverALaMesa(); return;
@@ -1449,25 +1628,41 @@ function avisoRed(sitio, sale) {
   S.game.log(sale ? `${a.apodo} se ha levantado de la mesa: hasta que vuelva, juega por ${a.apodo} el ordenador.` : `${a.apodo} ha vuelto a la mesa.`, { kind: 'info', seat: sitio, bubble: sale ? 'Se ha ido' : 'Ha vuelto' });
   render();
 }
+// Quien se va deja su silla al ordenador. La recupera quien vuelve desde el mismo móvil (su identidad está en él);
+// si alguien entra con el mismo mote desde otro móvil, no se le sienta solo: decide quien abrió la mesa
 function revisarAusentes() {
   const R = S.red, ids = new Set(R.presentes.map(p => p.id));
-  const sentados = new Set(R.config.asientos.map(a => a.id).filter(Boolean));
   R.config.asientos.forEach((a, i) => {
     if (a.bot || i === R.mio) return;
-    let esta = ids.has(a.id);
-    if (!esta && R.bots.has(i)) {
-      // ¿Ha vuelto desde otra pestaña (o tras cerrar el navegador)? Se le reconoce por el mote
-      const vuelve = R.presentes.find(p => !sentados.has(p.id) && p.apodo.toLowerCase() === String(a.apodo).toLowerCase());
-      if (vuelve) { a.id = vuelve.id; sentados.add(vuelve.id); esta = true; }
-    }
+    const esta = ids.has(a.id);
     if (!esta && !R.bots.has(i)) { R.bots.add(i); MESA.enviar('sustituto', { sitio: i, bot: true }); avisoRed(i, true); comprobarListos(); step(); }
-    else if (esta && R.bots.has(i)) {
-      R.bots.delete(i);
-      MESA.enviar('estado', { config: R.config, acciones: R.log, bots: [...R.bots] }, a.id);
-      MESA.enviar('sustituto', { sitio: i, bot: false, id: a.id });
-      avisoRed(i, false);
-    }
+    else if (esta && R.bots.has(i)) devolverSilla(i, a.id);
   });
+  const sentados = new Set(R.config.asientos.map(a => a.id).filter(Boolean));
+  R.ofertas = [];
+  R.config.asientos.forEach((a, i) => {
+    if (a.bot || !R.bots.has(i)) return;
+    const otro = R.presentes.find(p => !sentados.has(p.id) && p.apodo.toLowerCase() === String(a.apodo).toLowerCase());
+    if (otro) R.ofertas.push({ sitio: i, id: otro.id, apodo: a.apodo });
+  });
+}
+function devolverSilla(i, id) {
+  const R = S.red, a = R.config && R.config.asientos[i];
+  if (!a || a.bot) return;
+  a.id = id;
+  R.apodos[id] = a.apodo;
+  R.bots.delete(i);
+  R.ofertas = R.ofertas.filter(o => o.sitio !== i);
+  mandarEstado(id);
+  MESA.enviar('sustituto', { sitio: i, bot: false, id });
+  avisoRed(i, false);
+  step();
+}
+function renderAvisosRed() {
+  const el = $('#avisos-red');
+  if (!el) return;
+  const R = enRed() && S.red.anfitrion ? S.red : null;
+  el.innerHTML = R && R.ofertas.length ? R.ofertas.map(o => `<button type="button" class="aviso-red" data-dar-silla="${o.sitio}">Ha entrado otro «${esc(o.apodo)}» desde otro móvil. <b>¿Es el de antes? Devolverle su silla</b></button>`).join('') : '';
 }
 if (MESA) {
   MESA.on('sala', lista => {
@@ -1485,7 +1680,7 @@ if (MESA) {
   });
   MESA.on('mensaje', recibirMensaje);
   // Si se corta la conexión y vuelve, el invitado pide que le pongan al día
-  MESA.on('conexion', ok => { const R = S.red; if (ok && R && R.jugando && !R.anfitrion) MESA.enviar('dame', { n: R.n }); });
+  MESA.on('conexion', ok => { const R = S.red; if (ok && R && R.jugando && !R.anfitrion) pedirEstado(true); });
 }
 
 // ---------- Las hojas de la mesa
@@ -1544,7 +1739,7 @@ function mesaHTML() {
   const ajustes = R.anfitrion ? `<div class="mesa-ajustes">
       <div class="seg" role="radiogroup" aria-label="Cuántos jugáis">${opcion('mesa-modo', '1v1', '1 contra 1', R.modo === '1v1')}${opcion('mesa-modo', '2v2', '2 contra 2', R.modo === '2v2')}</div>
       <div class="seg" role="radiogroup" aria-label="Hasta cuándo">${opcion('mesa-largo', 'juego', 'Un juego', R.largo === 'juego')}${opcion('mesa-largo', 'partida', 'Una partida', R.largo === 'partida')}</div>
-    </div>` : `<p class="mesa-modo-txt">${R.modo === '2v2' ? '2 contra 2' : '1 contra 1'} · ${R.largo === 'partida' ? 'una partida, a tres vacas' : 'un juego, a 40 chinas'}</p>`;
+    </div>` : `<p class="mesa-modo-txt">${R.modo === '2v2' ? '2 contra 2' : '1 contra 1'} · ${R.largo === 'partida' ? 'una partida, al mejor de tres vacas' : 'un juego, a 40 chinas'}</p>`;
   const sentados = R.sitios.slice(0, N).filter(Boolean).length;
   return `<h2>Mesa <span class="codigo-mesa">${esc(R.codigo)}</span></h2>
     ${aviso}
@@ -1591,7 +1786,7 @@ function comoMesaHTML() {
       ${paso(4, 'sillas', 'Que se sienten', 'Ellos tocan el enlace (o el papel de la pizarra, y ponen el código). Verás sus motes en las sillas, y cambiarlos de sitio para hacer las parejas.')}
       ${paso(5, 'repartir', '¡A repartir!', 'Cuando estéis, quien abrió la mesa reparte. Si falta alguien, se sienta la gente del bar: Tío Basilio, Maribel o Fermín.')}
     </ol>
-    <p class="nota-sala">Si alguien se levanta a mitad de partida, juega por él el ordenador hasta que vuelva (con el mismo enlace). Hace falta tener internet.</p>
+    <p class="nota-sala">Si alguien se levanta a mitad de partida, juega por él el ordenador hasta que vuelva con el mismo enlace desde su móvil (si vuelve desde otro, quien abrió la mesa decide si le devuelve la silla). Cada uno ve solo sus cartas. Hace falta tener internet.</p>
     <div class="sheet-acts"><button class="btn primary" type="button" data-open="mesa">Volver a la mesa</button></div>`;
 }
 async function compartirMesa() {
@@ -1668,6 +1863,7 @@ document.addEventListener('click', e => {
   if (t.hasAttribute('data-mesa-copiar')) { copiar(S.red.codigo, `Código ${S.red.codigo} copiado.`); return; }
   if (t.hasAttribute('data-mesa-repartir') || t.hasAttribute('data-mesa-otra')) { if (S.red && S.red.anfitrion) { S.mesaAviso = ''; repartirMesa(); } return; }
   if (t.hasAttribute('data-mesa-volver')) { volverALaMesa(); return; }
+  if (t.dataset.darSilla != null) { const R = S.red, o = R && R.ofertas.find(x => x.sitio === +t.dataset.darSilla); if (o) devolverSilla(o.sitio, o.id); return; }
   if (t.hasAttribute('data-mesa-salir')) { const juego = !!S.game; dejarMesa(); S.mesaAviso = ''; if (juego) toMenu(); openSheet('mesa'); return; }
   if (t.dataset.mesaSitio != null) {
     const R = S.red, i = Number(t.dataset.mesaSitio);

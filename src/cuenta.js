@@ -2,10 +2,13 @@
    Con base de datos (Supabase, configurada en config.js): cada jugador tiene su cuenta (correo y contraseña) y su
    progreso se guarda en la nube, así lo tiene en cualquier móvil u ordenador. Sin configurar (por ejemplo, en la vista
    previa), todo funciona igual pero el progreso se guarda solo en este dispositivo.
-   Habla directamente con la API de Supabase (auth/v1 y rest/v1), sin librerías. */
+   Habla directamente con la API de Supabase (auth/v1 y rest/v1), sin librerías.
+   El progreso de la nube nunca se pisa: el juego solo le manda lo que se acaba de jugar y la base de datos lo SUMA
+   (con la función apuntar_progreso, que además comprueba que cuadre). Así, dos móviles a la vez no se borran nada, y si
+   no hay cobertura, lo pendiente se guarda en el móvil y se manda en cuanto la haya. */
 (function (root) {
 'use strict';
-const LOCAL = 'perro-progreso', SESION = 'perro-sesion';
+const LOCAL = 'perro-progreso', SESION = 'perro-sesion', PENDIENTE = 'perro-pendiente', EN_CURSO = 'perro-en-curso';
 const cfg = root.PERRO_NUBE || {};
 const URL_NUBE = String(cfg.url || '').replace(/\/+$/, ''), CLAVE = String(cfg.clave || '');
 const nube = !!(URL_NUBE && CLAVE);
@@ -93,90 +96,196 @@ async function token() {
 }
 const nombreDe = (u) => (u && u.user_metadata && u.user_metadata.nombre) || (u && u.email ? u.email.split('@')[0] : 'Jugador');
 
-// ---------------------------------------------------------------- Juntar el progreso de la nube y el del dispositivo
-// Los contadores solo crecen. Si lo de este dispositivo es de la misma cuenta, de cada contador se queda el mayor
-// (así no se pierde nada aunque un móvil tenga una copia vieja o se haya jugado sin cobertura). Si es de alguien
-// que jugó sin cuenta en este dispositivo, se suma a la cuenta.
-const CONTADORES = [['partidas', 'jugadas'], ['partidas', 'ganadas'], ['partidas', 'perdidas'], ['juegos', 'ganados'], ['juegos', 'perdidos'],
-  ['vacas', 'ganadas'], ['vacas', 'perdidas'], ['chinas', 'ganadas'], ['chinas', 'perdidas'], ['jugadas']];
-const num = v => (typeof v === 'number' && isFinite(v) ? v : 0);
-const leerRuta = (o, r) => num(r.reduce((a, k) => (a == null ? a : a[k]), o));
-function ponerRuta(o, r, v) { let a = o; for (const k of r.slice(0, -1)) a = a[k] || (a[k] = {}); a[r[r.length - 1]] = v; }
-const actividad = p => leerRuta(p, ['jugadas']) + leerRuta(p, ['partidas', 'jugadas']);
-const fecha = t => Date.parse(t || '') || 0;
-function fusionar(nube, local, sumar) {
-  const r = completar(JSON.parse(JSON.stringify(nube)));
-  const junta = (a, b) => (sumar ? a + b : Math.max(a, b));
-  const rutas = CONTADORES.slice();
-  for (const m of new Set([...Object.keys(nube.porModo || {}), ...Object.keys(local.porModo || {})])) rutas.push(['porModo', m, 'jugadas'], ['porModo', m, 'ganadas']);
-  for (const ruta of rutas) ponerRuta(r, ruta, junta(leerRuta(nube, ruta), leerRuta(local, ruta)));
-  const masNueva = fecha(local.ultimaPartida) > fecha(nube.ultimaPartida) ? local : nube;
-  r.ultimaPartida = masNueva.ultimaPartida || null;
-  r.racha = { actual: leerRuta(masNueva, ['racha', 'actual']), mejor: Math.max(leerRuta(nube, ['racha', 'mejor']), leerRuta(local, ['racha', 'mejor'])) };
-  r.racha.mejor = Math.max(r.racha.mejor, r.racha.actual);
-  r.tutorial = !!(nube.tutorial || local.tutorial);
-  const pv = [fecha(nube.primeraVez), fecha(local.primeraVez)].filter(Boolean);
-  if (pv.length) r.primeraVez = new Date(Math.min(...pv)).toISOString();
-  return r;
+// ---------------------------------------------------------------- Lo pendiente de mandar
+// Por cada cuenta: lo jugado que la nube todavía no ha sumado
+const deltaVacio = () => ({ jugadas: 0, chinas: { g: 0, p: 0 }, juegos: { g: 0, p: 0 }, vacas: { g: 0, p: 0 }, partidas: [], tutorial: false });
+const esVacio = d => !d || (!d.jugadas && !d.partidas.length && !d.tutorial && !d.importar);
+let pendientes = leer(PENDIENTE) || {};
+if (typeof pendientes !== 'object' || Array.isArray(pendientes)) pendientes = {};
+const miPendiente = () => (sesion && sesion.user ? pendientes[sesion.user.id] || null : null);
+function anotar(f) {
+  if (!nube || !sesion || !sesion.user) return;
+  const id = sesion.user.id;
+  if (!pendientes[id]) pendientes[id] = deltaVacio();
+  f(pendientes[id]);
+  escribir(PENDIENTE, pendientes);
+}
+// Sumar lo pendiente a unos totales (para enseñar lo de la nube más lo que aún no ha llegado)
+function sumarDelta(p, d) {
+  if (!d) return p;
+  const n = v => (typeof v === 'number' && isFinite(v) ? v : 0);
+  const anadir = (x, k) => {
+    if (!x) return;
+    p.jugadas += n(x.jugadas);
+    p.chinas.ganadas += n(x.chinas && x.chinas.g); p.chinas.perdidas += n(x.chinas && x.chinas.p);
+    p.juegos.ganados += n(x.juegos && x.juegos.g); p.juegos.perdidos += n(x.juegos && x.juegos.p);
+    p.vacas.ganadas += n(x.vacas && x.vacas.g); p.vacas.perdidas += n(x.vacas && x.vacas.p);
+    if (k) {   // lo importado trae los totales de partidas tal cual
+      p.partidas.jugadas += n(x.partidas && x.partidas.jugadas); p.partidas.ganadas += n(x.partidas && x.partidas.ganadas); p.partidas.perdidas += n(x.partidas && x.partidas.perdidas);
+      for (const m in x.porModo || {}) { const pm = p.porModo[m] || (p.porModo[m] = { jugadas: 0, ganadas: 0 }); pm.jugadas += n(x.porModo[m].jugadas); pm.ganadas += n(x.porModo[m].ganadas); }
+      p.racha.mejor = Math.max(p.racha.mejor, n(x.rachaMejor));
+    }
+  };
+  anadir(d, false);
+  anadir(d.importar, true);
+  for (const r of d.partidas) {
+    const gana = !!r.g && !r.ab;
+    p.partidas.jugadas++; p.partidas[gana ? 'ganadas' : 'perdidas']++;
+    const pm = p.porModo[r.m] || (p.porModo[r.m] = { jugadas: 0, ganadas: 0 });
+    pm.jugadas++; if (gana) pm.ganadas++;
+    p.racha.actual = gana ? p.racha.actual + 1 : 0;
+    p.racha.mejor = Math.max(p.racha.mejor, p.racha.actual);
+  }
+  if (d.tutorial) p.tutorial = true;
+  return p;
+}
+function devolver(id, d) {
+  // Lo que no se pudo mandar vuelve a lo pendiente (delante de lo nuevo)
+  const q = pendientes[id] || deltaVacio();
+  const r = deltaVacio();
+  r.jugadas = d.jugadas + q.jugadas;
+  for (const k of ['chinas', 'juegos', 'vacas']) { r[k].g = d[k].g + q[k].g; r[k].p = d[k].p + q[k].p; }
+  r.partidas = d.partidas.concat(q.partidas);
+  r.tutorial = d.tutorial || q.tutorial;
+  if (d.importar || q.importar) r.importar = d.importar || q.importar;
+  pendientes[id] = r;
+  escribir(PENDIENTE, pendientes);
 }
 
-// Lee la ficha del jugador y la junta con lo que haya en este dispositivo; luego deja las dos iguales
+// ---------------------------------------------------------------- Lo de este móvil que la nube no tiene
+// Lo jugado sin cuenta en este móvil se suma a la cuenta al entrar; y una copia de una versión anterior del juego
+// (que guardaba la ficha entera) aporta lo que tenga de más. Va como «importar», que la base de datos acepta pocas veces.
+const n0 = v => (typeof v === 'number' && isFinite(v) && v > 0 ? Math.floor(v) : 0);
+function actividad(p) { return n0(p && p.jugadas) + n0(p && p.partidas && p.partidas.jugadas); }
+function comoImportar(p, menos) {
+  const r = (a, b) => Math.max(0, n0(a) - n0(b));
+  const m = menos || vacio();
+  const imp = {
+    jugadas: r(p.jugadas, m.jugadas),
+    chinas: { g: r(p.chinas.ganadas, m.chinas.ganadas), p: r(p.chinas.perdidas, m.chinas.perdidas) },
+    juegos: { g: r(p.juegos.ganados, m.juegos.ganados), p: r(p.juegos.perdidos, m.juegos.perdidos) },
+    vacas: { g: r(p.vacas.ganadas, m.vacas.ganadas), p: r(p.vacas.perdidas, m.vacas.perdidas) },
+    partidas: { jugadas: r(p.partidas.jugadas, m.partidas.jugadas), ganadas: r(p.partidas.ganadas, m.partidas.ganadas), perdidas: r(p.partidas.perdidas, m.partidas.perdidas) },
+    porModo: {},
+    rachaMejor: menos ? 0 : n0(p.racha && p.racha.mejor),
+  };
+  for (const k of ['1v1', '2v2']) {
+    const a = (p.porModo || {})[k] || {}, b = (m.porModo || {})[k] || {};
+    imp.porModo[k] = { jugadas: r(a.jugadas, b.jugadas), ganadas: r(a.ganadas, b.ganadas) };
+  }
+  // Que cuadre como lo pide la base de datos
+  imp.juegos.g = Math.min(imp.juegos.g, imp.jugadas); imp.juegos.p = Math.min(imp.juegos.p, imp.jugadas - imp.juegos.g);
+  imp.vacas.g = Math.min(imp.vacas.g, imp.juegos.g + imp.juegos.p); imp.vacas.p = Math.min(imp.vacas.p, imp.juegos.g + imp.juegos.p - imp.vacas.g);
+  const tope = 100 * imp.jugadas;
+  imp.chinas.g = Math.min(imp.chinas.g, tope); imp.chinas.p = Math.min(imp.chinas.p, tope - imp.chinas.g);
+  imp.partidas.jugadas = Math.min(imp.partidas.jugadas, imp.jugadas + 50);
+  imp.partidas.ganadas = Math.min(imp.partidas.ganadas, imp.partidas.jugadas);
+  imp.partidas.perdidas = Math.min(imp.partidas.perdidas, imp.partidas.jugadas - imp.partidas.ganadas);
+  for (const k of ['1v1', '2v2']) { const x = imp.porModo[k]; x.jugadas = Math.min(x.jugadas, imp.partidas.jugadas); x.ganadas = Math.min(x.ganadas, x.jugadas); }
+  imp.rachaMejor = Math.min(imp.rachaMejor, imp.partidas.ganadas);
+  if (imp.jugadas > 5000) return null;
+  return actividad(imp) > 0 ? imp : null;
+}
+
+// ---------------------------------------------------------------- La ficha en la nube
+let fichaLista = false, enviando = null, reintento = null;
+// Lo que se enseña: lo de la nube más lo pendiente
+function ponerDeLaNube(p, nombre) {
+  const t = completar(JSON.parse(JSON.stringify(p || {})));
+  sumarDelta(t, miPendiente());
+  t.nombre = nombre || (E.usuario && E.usuario.nombre) || E.progreso.nombre || '';
+  t.dueno = sesion.user.id;
+  t.sincronizado = true;   // ya no hace falta importar nada de esta copia
+  E.progreso = t;
+  escribir(LOCAL, t);
+}
 async function cargarFicha() {
   const tk = await token();
-  if (!tk || !sesion.user) return;
+  if (!tk || !sesion || !sesion.user) return;
   const id = sesion.user.id;
-  const filas = await api(`/rest/v1/jugadores?id=eq.${encodeURIComponent(id)}&select=nombre,progreso,actualizado`, { token: tk });
-  const local = E.progreso;
+  const filas = await api(`/rest/v1/jugadores?id=eq.${encodeURIComponent(id)}&select=nombre,progreso`, { token: tk });
   const fila = Array.isArray(filas) ? filas[0] : null;
-  const enNube = fila && fila.progreso && typeof fila.progreso === 'object' ? completar(fila.progreso) : null;
-  const deOtro = !!(local.dueno && local.dueno !== id);   // lo de aquí es de otra cuenta: no se mezcla
-  let p;
-  if (deOtro) p = enNube || vacio();
-  else if (!enNube || !actividad(enNube)) p = fusionar(local, enNube || vacio(), false);   // cuenta nueva: se queda con lo de aquí
-  else p = fusionar(enNube, local, local.dueno !== id);
-  p.nombre = (fila && fila.nombre) || local.nombre || nombreDe(sesion.user);
-  p.dueno = id;
-  E.progreso = p;
-  E.usuario = { id, email: sesion.user.email, nombre: p.nombre };
-  escribir(LOCAL, p);
+  const enNube = completar(JSON.parse(JSON.stringify((fila && fila.progreso && typeof fila.progreso === 'object') ? fila.progreso : {})));
+  const local = E.progreso;
+  let importar = null;
+  if (!local.dueno && !local.importado) importar = comoImportar(local, null);                    // jugado aquí sin cuenta
+  else if (local.dueno === id && !local.sincronizado) importar = comoImportar(local, enNube);    // copia de una versión anterior
+  if (importar) anotar(d => { d.importar = importar; });
+  const nombre = (fila && fila.nombre) || local.nombre || nombreDe(sesion.user);
+  E.usuario = { id, email: sesion.user.email, nombre };
   fichaLista = true;
-  await subir();
+  ponerDeLaNube(enNube, nombre);
+  avisar();
+  await enviar();
 }
-async function subir(alIrse) {
-  // Nunca se sube nada sin haber leído antes lo que hay en la nube (si no, una copia vieja la pisaría)
+// Manda lo pendiente para que la nube lo sume; lo que se apunte mientras tanto espera a la siguiente
+async function enviar(alIrse) {
+  if (!nube || !sesion || !sesion.user) return;
   if (!fichaLista) return cargarFicha();
-  const tk = await token();
-  if (!tk || !sesion.user) return;
-  pendiente = false;
-  E.progreso.actualizado = new Date().toISOString();
-  escribir(LOCAL, E.progreso);
-  try {
-    await api('/rest/v1/jugadores?on_conflict=id', {
-      metodo: 'POST', token: tk, seguir: !!alIrse,
-      cabeceras: { Prefer: 'resolution=merge-duplicates,return=minimal' },
-      cuerpo: { id: sesion.user.id, nombre: E.progreso.nombre || nombreDe(sesion.user), progreso: E.progreso, actualizado: E.progreso.actualizado },
-    });
-  } catch (e) { pendiente = true; throw e; }
+  if (enviando) return enviando;
+  const id = sesion.user.id, d = pendientes[id];
+  if (esVacio(d)) return;
+  delete pendientes[id];
+  escribir(PENDIENTE, pendientes);
+  enviando = (async () => {
+    try {
+      const tk = await token();
+      if (!tk) throw new Error('Sin sesión');
+      const p = await api('/rest/v1/rpc/apuntar_progreso', { metodo: 'POST', token: tk, seguir: !!alIrse, cuerpo: { d } });
+      if (sesion && sesion.user && sesion.user.id === id) { ponerDeLaNube(p); avisar(); }
+    } catch (e) {
+      const cod = e && e.datos && e.datos.code;
+      if (cod === '22023') console.warn('La nube no ha aceptado este progreso (no cuadra):', d, e.datos);
+      else {
+        devolver(id, d);
+        clearTimeout(reintento);
+        reintento = setTimeout(() => enviar().catch(() => {}), cod === '53400' ? 20000 : 30000);
+        throw e;
+      }
+    } finally { enviando = null; }
+  })();
+  return enviando;
 }
-let subirT = null, pendiente = false, fichaLista = false;
+let enviarT = null;
 function guardar() {
   E.progreso.actualizado = new Date().toISOString();
   escribir(LOCAL, E.progreso);
   if (!nube || !sesion) return;
-  pendiente = true;
-  clearTimeout(subirT);
-  subirT = setTimeout(subirAhora, 1200);
+  clearTimeout(enviarT);
+  enviarT = setTimeout(enviarAhora, 1200);
 }
-function subirAhora(alIrse) {
-  clearTimeout(subirT); subirT = null;
-  if (!pendiente || !nube || !sesion) return;
-  subir(alIrse === true).catch(e => { if (alIrse === true) return; E.aviso = 'No se ha podido guardar en la nube; se guardará en cuanto haya conexión.'; console.warn(e); avisar(); });
+function enviarAhora(alIrse) {
+  clearTimeout(enviarT); enviarT = null;
+  if (!nube || !sesion) return;
+  enviar(alIrse === true).catch(e => { if (alIrse === true) return; E.aviso = 'No se ha podido guardar en la nube; se guardará en cuanto haya conexión.'; console.warn(e); avisar(); });
 }
-// Si se cierra la app o se cambia de pestaña justo al acabar, lo que faltaba por subir se sube ya
+// Si se cierra la app o se cambia de pestaña justo al acabar, lo que faltaba por mandar se manda ya
 if (root.addEventListener) {
-  root.addEventListener('pagehide', () => subirAhora(true));
-  root.addEventListener('online', () => subirAhora());
-  if (root.document) root.document.addEventListener('visibilitychange', () => { if (root.document.visibilityState === 'hidden') subirAhora(true); });
+  root.addEventListener('pagehide', () => enviarAhora(true));
+  root.addEventListener('online', () => enviarAhora());
+  if (root.document) root.document.addEventListener('visibilitychange', () => { if (root.document.visibilityState === 'hidden') enviarAhora(true); });
+}
+
+// ---------------------------------------------------------------- Apuntar lo que pasa
+function apuntarPartida(modo, gana, abandono) {
+  const p = E.progreso;
+  const g = !!gana && !abandono;
+  escribir(EN_CURSO, null);
+  p.partidas.jugadas++; p.partidas[g ? 'ganadas' : 'perdidas']++;
+  const m = p.porModo[modo] || (p.porModo[modo] = { jugadas: 0, ganadas: 0 });
+  m.jugadas++; if (g) m.ganadas++;
+  p.racha.actual = g ? p.racha.actual + 1 : 0;
+  p.racha.mejor = Math.max(p.racha.mejor, p.racha.actual);
+  if (abandono) p.abandonos = (p.abandonos || 0) + 1;
+  p.ultimaPartida = new Date().toISOString();
+  anotar(d => d.partidas.push(abandono ? { m: modo, g: false, ab: true } : { m: modo, g }));
+  guardar(); avisar();
+}
+// Una partida se da por abandonada si se sale a mitad (o se cierra la app) después de jugar al menos una jugada
+function abandonar() {
+  const m = leer(EN_CURSO);
+  escribir(EN_CURSO, null);
+  if (m && m.jugadas > 0) apuntarPartida(m.modo === '2v2' ? '2v2' : '1v1', false, true);
 }
 
 // ---------------------------------------------------------------- Lo que puede hacer el jugador
@@ -234,19 +343,22 @@ const Cuenta = {
     try {
       const r = await api('/auth/v1/token?grant_type=password', { metodo: 'POST', cuerpo: { email: correo, password: clave } });
       guardarSesion(r);
+      fichaLista = false;
       await cargarFicha();
       avisar();
       return { ok: true, mensaje: `¡Hola de nuevo, ${E.usuario.nombre}!` };
     } catch (e) { return { ok: false, mensaje: e.message || 'No hay conexión con el servidor.' }; }
   },
   async salir() {
+    // Antes de irse, lo pendiente (si no se puede, se queda guardado para cuando vuelva a entrar)
+    try { await enviar(); } catch (e) { /* se queda pendiente */ }
     const tk = sesion && sesion.access_token;
     if (tk) api('/auth/v1/logout', { metodo: 'POST', token: tk }).catch(() => {});
-    clearTimeout(subirT); subirT = null; pendiente = false; fichaLista = false;
+    clearTimeout(enviarT); clearTimeout(reintento); fichaLista = false;
     guardarSesion(null);
     E.usuario = null;
     // En el dispositivo se queda un progreso de invitado limpio, para no mezclar cuentas
-    E.progreso = vacio(); E.progreso.tutorial = true;
+    E.progreso = vacio(); E.progreso.tutorial = true; E.progreso.importado = true;
     escribir(LOCAL, E.progreso);
     avisar();
   },
@@ -271,6 +383,12 @@ const Cuenta = {
     E.progreso.nombre = nombre;
     if (E.usuario) E.usuario.nombre = nombre;
     guardar(); avisar();
+    // El nombre es lo único de la ficha que se cambia directamente
+    if (nube && sesion && sesion.user) {
+      const id = sesion.user.id;
+      token().then(tk => tk && api(`/rest/v1/jugadores?id=eq.${encodeURIComponent(id)}`, { metodo: 'PATCH', token: tk, cuerpo: { nombre }, cabeceras: { Prefer: 'return=minimal' } }))
+        .catch(e => { E.aviso = 'No se ha podido guardar el nombre en la nube.'; console.warn(e); avisar(); });
+    }
     return { ok: true, mensaje: 'Nombre guardado.' };
   },
   limpiarAviso() { E.aviso = ''; },
@@ -279,21 +397,29 @@ const Cuenta = {
   apuntarJugada(ganadas, perdidas) {
     const p = E.progreso;
     p.jugadas++; p.chinas.ganadas += ganadas; p.chinas.perdidas += perdidas;
+    anotar(d => { d.jugadas++; d.chinas.g += ganadas; d.chinas.p += perdidas; });
+    const m = leer(EN_CURSO);
+    if (m) { m.jugadas = (m.jugadas || 0) + 1; escribir(EN_CURSO, m); }
     guardar();
   },
-  apuntarJuego(gana) { E.progreso.juegos[gana ? 'ganados' : 'perdidos']++; guardar(); },
-  apuntarVaca(gana) { E.progreso.vacas[gana ? 'ganadas' : 'perdidas']++; guardar(); },
-  apuntarPartida(modo, gana) {
-    const p = E.progreso;
-    p.partidas.jugadas++; p.partidas[gana ? 'ganadas' : 'perdidas']++;
-    const m = p.porModo[modo] || (p.porModo[modo] = { jugadas: 0, ganadas: 0 });
-    m.jugadas++; if (gana) m.ganadas++;
-    p.racha.actual = gana ? p.racha.actual + 1 : 0;
-    p.racha.mejor = Math.max(p.racha.mejor, p.racha.actual);
-    p.ultimaPartida = new Date().toISOString();
-    guardar(); avisar();
-  },
-  apuntarTutorial() { if (!E.progreso.tutorial) { E.progreso.tutorial = true; guardar(); } },
+  apuntarJuego(gana) { E.progreso.juegos[gana ? 'ganados' : 'perdidos']++; anotar(d => { d.juegos[gana ? 'g' : 'p']++; }); guardar(); },
+  apuntarVaca(gana) { E.progreso.vacas[gana ? 'ganadas' : 'perdidas']++; anotar(d => { d.vacas[gana ? 'g' : 'p']++; }); guardar(); },
+  apuntarPartida(modo, gana) { apuntarPartida(modo, gana, false); },
+  apuntarTutorial() { if (!E.progreso.tutorial) { E.progreso.tutorial = true; anotar(d => { d.tutorial = true; }); guardar(); } },
+
+  // La partida en curso: salir a mitad (o cerrar la app) cuenta como perdida
+  empezarPartida(modo, enRed) { abandonar(); escribir(EN_CURSO, { modo, red: !!enRed, jugadas: 0 }); },
+  abandonar,
+  olvidarPartida() { escribir(EN_CURSO, null); },
+  partidaEnCurso() { const m = leer(EN_CURSO); return !!(m && m.jugadas > 0); },
 };
+// Si la última vez se cerró la app a mitad de partida, cuenta como perdida. En la mesa con amigos no: se puede volver
+// a la misma partida con el enlace (y salir de la mesa a propósito sí cuenta).
+(function () {
+  const m = leer(EN_CURSO);
+  if (!m) return;
+  if (m.red) escribir(EN_CURSO, null);
+  else abandonar();
+})();
 root.PerroCuenta = Cuenta;
 })(typeof window !== 'undefined' ? window : globalThis);

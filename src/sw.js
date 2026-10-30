@@ -3,7 +3,7 @@
    demasiado, tira de la copia guardada. Lo de Supabase (cuentas y mesa con amigos) no pasa por aquí. */
 const VERSION = '__VERSION__';
 const CACHE = 'el-perro-' + VERSION;
-const BASICO = ['./', 'index.html', 'config.js', 'manifest.webmanifest', 'icono-180.png', 'icono-192.png', 'icono-512.png'];
+const BASICO = ['./', 'index.html', 'config.js', 'manifest.webmanifest', 'icono-180.png', 'icono-192.png', 'icono-512.png', 'icono-maskable-512.png'];
 const FUENTES = /^https:\/\/fonts\.(googleapis|gstatic)\.com\//;
 const ESPERA = 4000;   // con una raya de cobertura, a los 4 s se abre la copia guardada (y se renueva por detrás)
 

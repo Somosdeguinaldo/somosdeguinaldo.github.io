@@ -148,6 +148,16 @@ class Game {
     const humans = opts.humans || [0];
     this.players = names.map((name, seat) => ({ seat, name, human: humans.includes(seat) }));
     this.humanSeat = humans.length ? humans[0] : null;
+    // Los que juegan de carne y hueso (en la mesa con amigos, todos los que no son del ordenador). Es lo mismo en
+    // todos los móviles, así que todo lo que dependa de ello sale igual en cada uno
+    this.personas = new Set(opts.personas || humans);
+    // Modo oculto (los invitados de la mesa con amigos): no se reparte aquí; cada uno solo conoce sus cartas, y
+    // lo que no puede saber (flores cantadas al responder, ligados, flores que se enseñan) llega en «pista» con cada jugada
+    this.oculto = opts.oculto || null;
+    this.pista = {};
+    this.nJugada = 0;
+    this.vistasReparto = new Set();   // cartas que han quedado a la vista en las jugadas anteriores de este reparto
+    this.propias = {};                 // y las que tuvo cada uno (solo las sabe él)
     this.scores = [0, 0];
     this.juegos = [0, 0];
     this.vacas = [0, 0];
@@ -176,15 +186,24 @@ class Game {
     if (ht == null) return 'Pareja ' + (t + 1);
     return t === ht ? 'Nosotros' : 'Ellos';
   }
-  // "Gana X" con concordancia
-  winsText(t) {
+  // En un mano a mano del 2 contra 2 habla uno solo: «gana Fermín», «Tú cobras»...
+  jugadorDe(t) {
+    const J = this.jugada;
+    return this.n === 4 && J && J.kind === 'duel' ? J.participants.find(s => this.teamOf(s) === t) : undefined;
+  }
+  // "Gana X" con concordancia (enJugada: lo que pasa en esta jugada, no en el juego)
+  winsText(t, enJugada) {
+    const uno = enJugada ? this.jugadorDe(t) : undefined;
+    if (uno !== undefined) return this.isHuman(uno) ? 'ganas tú' : 'gana ' + this.name(uno);
     const ht = this.humanTeam();
     if (this.n === 2) return ht === t ? 'ganas tú' : 'gana ' + this.name(t);
     if (ht == null) return 'gana ' + this.teamName(t);
     return t === ht ? 'ganáis vosotros' : 'ganan ellos';
   }
   // Sujeto + verbo concordado para un bando: Tú cobras / Tío Basilio cobra / Nosotros cobramos / Ellos cobran
-  teamVerb(t, v3, v2, v1p, v3p) {
+  teamVerb(t, v3, v2, v1p, v3p, enJugada) {
+    const uno = enJugada ? this.jugadorDe(t) : undefined;
+    if (uno !== undefined) return this.isHuman(uno) ? 'Tú ' + v2 : this.name(uno) + ' ' + v3;
     if (this.n === 2) return this.isHuman(t) ? 'Tú ' + v2 : this.name(t) + ' ' + v3;
     const ht = this.humanTeam();
     if (ht == null) return this.teamName(t) + ' ' + v3;
@@ -195,6 +214,8 @@ class Game {
   faltaAmount() { return this.target - Math.max(this.scores[0], this.scores[1]); }
   teamParticipants(team) { return this.jugada.participants.filter(s => this.teamOf(s) === team); }
   florSingers(team) { const J = this.jugada; return J.participants.filter(s => this.teamOf(s) === team && J.florSung[s]); }
+  // En modo oculto, las cartas de este jugador no se ven desde este móvil
+  esOculta(s) { return !!this.oculto && !this.oculto.ve.includes(s); }
   bazaOrder(leader) {
     const P = this.jugada.participants, i = P.indexOf(leader);
     return P.slice(i).concat(P.slice(0, i));
@@ -207,7 +228,8 @@ class Game {
     const holder = 0;
     const assign = {};
     SUITS.forEach((s, i) => { assign[s] = (holder + i) % this.n; });
-    const cut = CARDS[Math.floor(this.rnd() * CARDS.length)];
+    const cut = this.oculto ? card(this.oculto.corte) : CARDS[Math.floor(this.rnd() * CARDS.length)];
+    this.corte = cut.id;
     const dealer = assign[cut.suit];
     this.log(`Sorteo: ${SUITS.map(s => s + ' para ' + this.name(assign[s])).join(', ')}. Al cortar sale el ${cardName(cut)}: reparte ${this.name(dealer)}.`, { kind: 'info' });
     this.newReparto(dealer);
@@ -216,10 +238,15 @@ class Game {
   newReparto(dealer) {
     this.dealer = dealer;
     this.repartoNum++;
-    const ids = shuffle(ALL_IDS.slice(), this.rnd);
-    const k = 3 + Math.floor(this.rnd() * (ids.length - 5)); // al cortar quedan al menos tres cartas en cada montón
-    this.deck = ids.slice(k).concat(ids.slice(0, k));
+    if (this.oculto) this.deck = null;
+    else {
+      const ids = shuffle(ALL_IDS.slice(), this.rnd);
+      const k = 3 + Math.floor(this.rnd() * (ids.length - 5)); // al cortar quedan al menos tres cartas en cada montón
+      this.deck = ids.slice(k).concat(ids.slice(0, k));
+    }
     this.jugadaIdx = 0;
+    this.vistasReparto = new Set();
+    this.propias = {};
     this.log(`Reparto ${this.repartoNum}: baraja y reparte ${this.name(dealer)}, corta ${this.name(this.left(dealer))}.`, { kind: 'reparto' });
     this.startJugada();
   }
@@ -237,9 +264,21 @@ class Game {
     const d = this.dealer;
     const participants = plan.kind === 'duel' ? [plan.rival, d] : [1, 2, 3, 4].map(i => (d + i) % 4);
     const hands = {};
+    this.nJugada++;
     participants.forEach(s => { hands[s] = []; });
-    // Se reparte de una en una empezando por el rival (o por el de la derecha si juega toda la mesa)
-    for (let r = 0; r < 3; r++) for (const s of participants) hands[s].push(this.deck.shift());
+    let datos = null;
+    if (this.oculto) {
+      // Solo las cartas de este móvil; las de los demás, boca abajo («?»)
+      datos = this.oculto.datos(this.nJugada);
+      if (!datos) throw new Error('Faltan las cartas de la jugada ' + this.nJugada);
+      for (const s of participants) {
+        const mias = this.oculto.ve.includes(s) && datos.cartas && datos.cartas.length === 3;
+        hands[s] = mias ? datos.cartas.slice() : [0, 1, 2].map(i => `?${s}${i}`);
+      }
+    } else {
+      // Se reparte de una en una empezando por el rival (o por el de la derecha si juega toda la mesa)
+      for (let r = 0; r < 3; r++) for (const s of participants) hands[s].push(this.deck.shift());
+    }
     if (this.rigged) {
       const fixed = this.rigged(this.jugadaIdx, participants, this);
       if (fixed) for (const s of participants) if (fixed[s]) hands[s] = fixed[s].slice();
@@ -253,15 +292,23 @@ class Game {
       ligadoDeclared: false, ended: false, discards: [], tapadas: {}, bazaWinner: null, summary: null,
       firstEvent: this.seq + 1,
     };
+    // Cada uno se acuerda de las cartas que ha tenido en este reparto (ya no las puede tener nadie más)
+    for (const s of participants) {
+      if (this.esOculta(s)) continue;
+      const set = this.propias[s] || (this.propias[s] = new Set());
+      for (const id of hands[s]) set.add(id);
+    }
     if (plan.kind === 'duel') this.log(`Jugada ${J.num} de 3: mano a mano entre ${this.name(J.mano)} y ${this.name(d)}. Es mano ${this.name(J.mano)}.`, { kind: 'jugada' });
     else this.log(`Jugada 3 de 3: juega toda la mesa. Es mano ${this.name(J.mano)}.`, { kind: 'jugada' });
+    // Señas: el compañero del ordenador se las hace a quien juega con él (las de carne y hueso, las hace cada uno)
     if (plan.kind === 'team') {
       for (const s of participants) {
         const p = this.partner(s);
-        if (!this.isHuman(s) && this.isHuman(p)) {
-          const senas = senasFor(J.orig[s].map(card));
-          this.log(`${this.name(s)} te hace señas: ${senas.join('; ')}.`, { kind: 'sena', seat: s, private: p, bubble: 'Te hace señas', senas });
-        }
+        if (this.personas.has(s) || !this.personas.has(p)) continue;
+        let senas = null;
+        if (!this.oculto) senas = senasFor(J.orig[s].map(card));
+        else if (this.oculto.ve.includes(p)) senas = datos.senas || null;
+        if (senas) this.log(`${this.name(s)} te hace señas: ${senas.join('; ')}.`, { kind: 'sena', seat: s, private: p, bubble: 'Te hace señas', senas });
       }
     }
     this.advance();
@@ -289,19 +336,19 @@ class Game {
 
   legal(s) {
     const J = this.jugada;
-    const mustFlor = hasFlor(J.orig[s].map(card)) && !J.florSung[s] && !J.firstPlayed[s];
+    const mustFlor = !this.esOculta(s) && hasFlor(J.orig[s].map(card)) && !J.florSung[s] && !J.firstPlayed[s];
     const anyFlor = J.florTeams[0] || J.florTeams[1];
     // Truque ya querido: quien lo quiso puede subirlo justo antes de enseñar su última carta,
     // cuando los rivales ya han echado todas las suyas.
     const T = J.truque, team = this.teamOf(s), falta = this.faltaAmount();
     const rivalesSinCartas = this.teamParticipants(1 - team).every(r => !J.hands[r].length);
     const canSubir = !mustFlor && !!T && T.status === 'accepted' && !T.isFalta && T.lastTeam !== team &&
-      rivalesSinCartas && J.hands[s].length > 0 && falta - T.amount >= 1;
+      rivalesSinCartas && J.hands[s].length > 0 && falta - T.amount - 1 >= 1;   // como en el resto del truque: hasta la falta menos 1
     return {
       mustFlor,
       canEnvido: !mustFlor && !J.firstPlayed[s] && !J.envido && !anyFlor,
       canTruque: !mustFlor && !J.truque,
-      canSubir, subirMax: canSubir ? Math.max(1, falta - T.amount - 1) : 0, subirAmount: T ? T.amount : 0,
+      canSubir, subirMax: canSubir ? falta - T.amount - 1 : 0, subirAmount: T ? T.amount : 0,
       canFaltaSubir: false, faltaAmount: falta,   // la falta solo se echa en el envite
       canMazo: !mustFlor,
       cards: mustFlor ? [] : J.hands[s].slice(),
@@ -334,20 +381,22 @@ class Game {
     const needTurn = () => {
       if (p.type !== 'turn' || a.seat !== p.seat) throw new Error('No es el turno de ' + a.seat);
     };
+    const oculta = a.seat != null && this.esOculta(a.seat);
     switch (a.type) {
       case 'play':
         needTurn();
-        if (!p.cards.includes(a.card)) throw new Error('Carta no válida: ' + a.card);
+        if (oculta) this.destapar(a.seat, a.card);
+        else if (!p.cards.includes(a.card)) throw new Error('Carta no válida: ' + a.card);
         this.playCard(a.seat, a.card);
         break;
       case 'flor':
         needTurn();
-        if (!p.mustFlor) throw new Error('No tiene flor que cantar');
+        if (!p.mustFlor && !oculta) throw new Error('No tiene flor que cantar');
         this.singFlor(a.seat, false);
         break;
       case 'envido':
         needTurn();
-        if (!p.canEnvido) throw new Error('No se puede envidar');
+        if (!p.canEnvido && !oculta) throw new Error('No se puede envidar');
         this.openBet('envido', a.seat);
         break;
       case 'truque':
@@ -357,19 +406,19 @@ class Game {
         break;
       case 'envidoTruque':
         needTurn();
-        if (!p.canEnvido || !p.canTruque) throw new Error('No se pueden cantar los dos');
+        if ((!p.canEnvido || !p.canTruque) && !oculta) throw new Error('No se pueden cantar los dos');
         J.queue.push({ kind: 'truque', seat: a.seat });
         this.openBet('envido', a.seat);
         break;
       case 'subir':
         needTurn();
-        if (!p.canSubir) throw new Error('No se puede subir el truque ahora');
+        if (!p.canSubir && !oculta) throw new Error('No se puede subir el truque ahora');
         if (a.falta) throw new Error('La falta solo se echa en el envite');
         this.subirTruque(a.seat, a.amount);
         break;
       case 'mazo':
         needTurn();
-        if (!p.canMazo) throw new Error('No puede irse al mazo');
+        if (!p.canMazo && !oculta) throw new Error('No puede irse al mazo');
         this.goMazo(a.seat);
         break;
       case 'respond':
@@ -390,6 +439,18 @@ class Game {
     this.advance();
   }
 
+  // Modo oculto: la carta que echa otro sustituye a una de las que estaban boca abajo
+  destapar(seat, id) {
+    const J = this.jugada, h = J.hands[seat], o = J.orig[seat];
+    if (!card(id) || h.includes(id)) return;
+    const i = h.findIndex(x => x[0] === '?');
+    if (i < 0) throw new Error('No le quedan cartas a ' + seat);
+    const tapada = h[i];
+    h[i] = id;
+    const k = o.indexOf(tapada);
+    if (k >= 0) o[k] = id;
+  }
+
   openBet(kind, seat) {
     const J = this.jugada, team = this.teamOf(seat);
     const bet = {
@@ -401,14 +462,16 @@ class Game {
     this.log(`${this.name(seat)}: ¡${kind === 'envido' ? 'Envido' : 'Truque'}! (${bet.amount} chinas)`, { seat, bubble: kind === 'envido' ? '¡Envido!' : '¡Truque!', kind: 'bet', act: kind, betKind: kind, amount: bet.amount });
     // Responder es hablar: quien aún no ha echado carta y tiene flor, la canta antes
     for (const s of this.teamParticipants(1 - team)) {
-      if (!J.firstPlayed[s] && !J.florSung[s] && hasFlor(J.orig[s].map(card))) this.singFlor(s, true);
+      if (J.firstPlayed[s] || J.florSung[s]) continue;
+      const tiene = this.esOculta(s) ? (this.pista.flores || []).includes(s) : hasFlor(J.orig[s].map(card));
+      if (tiene) this.singFlor(s, true);
     }
   }
 
   subirTruque(seat, n) {
     const J = this.jugada, bet = J.truque, team = this.teamOf(seat);
     bet.acceptedAmount = bet.amount;
-    const k = Math.max(1, Math.min(Math.floor(n || 1), this.faltaAmount() - bet.amount - 1));
+    const k = Math.max(1, Math.min(Math.floor(n || 1), Math.max(1, this.faltaAmount() - bet.amount - 1)));
     bet.amount += k;
     this.log(`${this.name(seat)}: Y yo, ${k} más al truque antes de su última carta (${bet.amount} chinas).`, { seat, bubble: `Y yo: ${bet.amount}`, kind: 'bet', act: 'raise', betKind: 'truque', amount: bet.amount, n: k });
     bet.count++;
@@ -435,20 +498,28 @@ class Game {
     }
   }
 
-  // Basta con que uno quiera: si el humano dice algo distinto de "no", manda lo suyo; si no, la respuesta más fuerte
+  // Basta con que uno quiera. Si alguien de carne y hueso dice algo distinto de "no", manda lo suyo (y entre dos
+  // personas, lo más fuerte); si no, la respuesta más fuerte del ordenador. Solo depende de quién es persona, que es
+  // igual en todos los móviles, así que la mesa con amigos sale igual en cada uno
   combine(responses, seats) {
     const order = { noquiero: 0, pasar: 0, quiero: 1, envidar: 1, raise: 2, falta: 3 };
-    const human = seats.find(s => this.isHuman(s));
-    if (human != null && responses[human] && order[responses[human].kind] > 0) return { seat: human, resp: responses[human] };
-    let best = null;
-    for (const s of seats) {
-      const r = responses[s];
-      if (!r) continue;
-      if (!best || order[r.kind] > order[best.resp.kind] || (r.kind === 'raise' && best.resp.kind === 'raise' && r.amount > best.resp.amount)) best = { seat: s, resp: r };
-    }
+    const mejor = lista => {
+      let best = null;
+      for (const s of lista) {
+        const r = responses[s];
+        if (!r || order[r.kind] == null) continue;
+        if (!best || order[r.kind] > order[best.resp.kind] || (r.kind === 'raise' && best.resp.kind === 'raise' && r.amount > best.resp.amount)) best = { seat: s, resp: r };
+      }
+      return best;
+    };
+    const personas = seats.filter(s => this.personas.has(s));
+    const dePersona = mejor(personas);
+    if (dePersona && order[dePersona.resp.kind] > 0) return dePersona;
+    const best = mejor(seats);
     if (!best) throw new Error('Falta la respuesta');
-    if (human != null && best.seat !== human && order[best.resp.kind] > 0) {
-      this.log(`Tú no quieres, pero ${this.name(best.seat)} sí: se juega.`, { kind: 'info' });
+    if (dePersona && best.seat !== dePersona.seat && order[best.resp.kind] > 0) {
+      const quien = this.isHuman(dePersona.seat) ? 'Tú no quieres' : `${this.name(dePersona.seat)} no quiere`;
+      this.log(`${quien}, pero ${this.name(best.seat)} sí: se juega.`, { kind: 'info' });
     }
     return best;
   }
@@ -472,7 +543,7 @@ class Game {
       bet.rejectWinner = bet.lastTeam;
       J.negs.pop();
       const pts = bet.kind === 'florEnvite' ? 4 : bet.acceptedAmount != null ? bet.acceptedAmount : bet.count;
-      this.log(`${this.name(seat)}: No quiero ${label}. ${this.teamVerb(bet.lastTeam, 'cobra', 'cobras', 'cobramos', 'cobran')} ${pts} ${pts === 1 ? 'china' : 'chinas'}.`, { seat, bubble: 'No quiero', kind: 'bet', act: 'noquiero', betKind: bet.kind, pts, toTeam: bet.lastTeam });
+      this.log(`${this.name(seat)}: No quiero ${label}. ${this.teamVerb(bet.lastTeam, 'cobra', 'cobras', 'cobramos', 'cobran', true)} ${pts} ${pts === 1 ? 'china' : 'chinas'}.`, { seat, bubble: 'No quiero', kind: 'bet', act: 'noquiero', betKind: bet.kind, pts, toTeam: bet.lastTeam });
       if (bet.kind === 'florEnvite') {
         J.florContest.stage = 'done';
         J.florContest.result = { accepted: false, winner: bet.lastTeam };
@@ -580,7 +651,12 @@ class Game {
     const J = this.jugada, e = J.envido;
     if (!e || e.status !== 'accepted' || e.annulled || J.ligadoDeclared) return;
     J.ligadoDeclared = true;
-    const vals = J.participants.map(s => ({ seat: s, v: ligadoValue(J.orig[s].map(card)) }));
+    let vals;
+    if (J.participants.some(s => this.esOculta(s))) {
+      // Cada uno dice su ligado en voz alta: el anfitrión manda los números
+      if (!Array.isArray(this.pista.ligado)) throw new Error('Falta el ligado');
+      vals = J.participants.map(s => ({ seat: s, v: Number((this.pista.ligado.find(x => x.seat === s) || {}).v) || 0 }));
+    } else vals = J.participants.map(s => ({ seat: s, v: ligadoValue(J.orig[s].map(card)) }));
     const best = [-1, -1];
     for (const x of vals) { const t = this.teamOf(x.seat); best[t] = Math.max(best[t], x.v); }
     const mt = this.teamOf(J.mano);
@@ -588,7 +664,7 @@ class Game {
     e.values = vals;
     e.winnerTeam = w;
     e.tie = best[0] === best[1];
-    this.log(`Ligado (empieza la mano): ${vals.map(x => this.name(x.seat) + ' ' + x.v).join(', ')}. ${e.tie ? 'Empate: gana la mano, ' : ''}${this.winsText(w)} el ligado.`, { kind: 'ligado' });
+    this.log(`Ligado (empieza la mano): ${vals.map(x => this.name(x.seat) + ' ' + x.v).join(', ')}. ${e.tie ? 'Empate: gana la mano, ' : ''}${this.winsText(w, true)} el ligado.`, { kind: 'ligado' });
   }
 
   florValues() {
@@ -606,6 +682,10 @@ class Game {
     if (J.ended) return;
     J.ended = true;
     J.endReason = reason;
+    // Las flores se enseñan siempre al acabar la jugada
+    if (this.oculto && this.pista.revela) {
+      for (const s in this.pista.revela) if (J.orig[s] && this.esOculta(+s)) J.orig[s] = this.pista.revela[s].slice();
+    }
     this.declareLigado();
     if (reason === 'bazas' && J.bazas[0].result === 'parda' && J.bazas[1] && J.bazas[1].result === 'parda') {
       this.log(`Vuelven a empatar: gana la mano (${this.name(J.mano)}).`, { kind: 'info' });
@@ -618,7 +698,7 @@ class Game {
       if (c) {
         if (c.result && c.result.accepted) {
           florInfo = this.florValues();
-          this.log(`Flores: ${florInfo.vals.map(x => this.name(x.seat) + ' ' + x.v).join(', ')}. ${florInfo.tie ? 'Empate: gana la mano, ' : ''}${this.winsText(florInfo.winner)} la flor.`, { kind: 'ligado' });
+          this.log(`Flores: ${florInfo.vals.map(x => this.name(x.seat) + ' ' + x.v).join(', ')}. ${florInfo.tie ? 'Empate: gana la mano, ' : ''}${this.winsText(florInfo.winner, true)} la flor.`, { kind: 'ligado' });
           items.push({ cat: 'flor', team: florInfo.winner, pts: 6, note: 'Flor envidada y querida' });
         } else if (c.result && c.result.accepted === false) {
           items.push({ cat: 'flor', team: c.result.winner, pts: 4, note: 'Flor envidada y no querida' });
@@ -680,6 +760,9 @@ class Game {
       if (partidaWinner !== null) this.log(`${this.teamVerb(partidaWinner, 'gana', 'ganas', 'ganamos', 'ganan')} la partida.`, { kind: 'juego' });
     }
     const flores = J.participants.filter(s => J.florSung[s]).map(s => ({ seat: s, cards: J.orig[s].slice(), v: florValue(J.orig[s].map(card)) }));
+    // Lo que todos han visto en esta jugada (las cartas echadas y las flores) ya no está en la baraja del reparto
+    for (const bz of J.bazas) for (const pl of bz.plays) this.vistasReparto.add(pl.card);
+    for (const f of flores) for (const id of f.cards) if (card(id)) this.vistasReparto.add(id);
     J.summary = {
       num: J.num, kind: J.kind, participants: J.participants.slice(), mano: J.mano, reason,
       bazas: J.bazas.map(bz => ({ plays: bz.plays.slice(), result: bz.result, winnerSeat: bz.winnerSeat })).filter(bz => bz.plays.length),
@@ -689,6 +772,33 @@ class Game {
       truque: t ? { status: t.status, amount: t.amount, count: t.count } : null,
       flores, florInfo, mazo: J.mazo, bazaWinner: J.bazaWinner, orig: J.orig,
     };
+  }
+
+  // ---------------------------------------------------------------- Para la mesa con amigos (lo usa el anfitrión)
+  // Antes de cada jugada se hace una «foto»; después, «pistaDesde» dice lo que los demás no pueden calcular solos
+  // porque no ven las cartas: quién cantó flor al responder, los ligados dichos en voz alta, las flores que se
+  // enseñan y si empieza otra jugada (para la que cada uno necesita sus cartas en secreto: «privadoPara»).
+  foto() {
+    const J = this.jugada;
+    return { J, seq: this.seq, lig: !!(J && J.ligadoDeclared), ended: !!(J && J.ended), nj: this.nJugada };
+  }
+  pistaDesde(f) {
+    const J = f.J, pista = {};
+    if (J && !f.lig && J.ligadoDeclared && J.envido && J.envido.values) pista.ligado = J.envido.values.map(x => ({ seat: x.seat, v: x.v }));
+    const flores = this.events.filter(e => e.id > f.seq && e.kind === 'flor' && e.auto).map(e => e.seat);
+    if (flores.length) pista.flores = flores;
+    if (J && !f.ended && J.ended) {
+      const rev = {};
+      for (const s of J.participants) if (J.florSung[s]) rev[s] = J.orig[s].slice();
+      if (Object.keys(rev).length) pista.revela = rev;
+    }
+    if (this.nJugada !== f.nj) pista.nueva = this.nJugada;
+    return pista;
+  }
+  privadoPara(seat) {
+    const J = this.jugada;
+    const sena = this.events.find(e => e.id >= J.firstEvent && e.kind === 'sena' && e.private === seat);
+    return { nj: this.nJugada, cartas: J.participants.includes(seat) ? J.orig[seat].slice() : [], senas: sena ? sena.senas.slice() : null };
   }
 
   continueAfter() {

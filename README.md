@@ -28,14 +28,17 @@ src/                  Las piezas del juego
   sw.js               El «service worker»: guarda una copia del juego en el móvil
   iconos/             El icono de la app (icono.js dibuja el SVG; los PNG salen de ahí)
 supabase/esquema.sql  La tabla de jugadores y sus reglas de seguridad
+supabase/progreso.sql Cómo se guarda el progreso: solo se puede sumar lo jugado (función apuntar_progreso)
 build.js              Junta src/ en docs/index.html (y en el-perro.html, para probar en local)
 test.js               Pruebas de las reglas
+test-oculto.js        Mesa con amigos: miles de partidas al azar en las que cada invitado solo ve sus cartas,
+                      comprobando que todos los móviles van igual
 test-cuenta.js        Pruebas de cómo se guarda y se junta el progreso (dispositivo y nube)
 config.ejemplo.js     Plantilla de docs/config.js
 ```
 
-Después de cambiar algo en `src/`: `node build.js` (o `npm run build`) y `node test.js` (o `npm test`) para comprobar
-las reglas. No hace falta instalar nada: solo Node.
+Después de cambiar algo en `src/`: `node build.js` (o `npm run build`) y `npm test` para comprobar las reglas,
+la mesa con amigos y el guardado del progreso. No hace falta instalar nada: solo Node.
 
 ## Tenerlo como app en el móvil
 
@@ -70,7 +73,8 @@ Se usa [Supabase](https://supabase.com): da cuentas con correo y contraseña y u
 Su plan gratuito sobra para un pueblo entero.
 
 1. Entra en supabase.com, crea una cuenta y un proyecto nuevo (elige la región de Europa, por ejemplo Frankfurt o París).
-2. **Crear la tabla**: en el proyecto, abre **SQL Editor**, pega el contenido de `supabase/esquema.sql` y pulsa **Run**.
+2. **Crear la tabla**: en el proyecto, abre **SQL Editor**, pega el contenido de `supabase/esquema.sql` y pulsa **Run**;
+   luego haz lo mismo con `supabase/progreso.sql`.
    Crea la tabla `jugadores` con una regla para que cada jugador solo pueda leer y cambiar su propia ficha.
 3. **Dirección de la web**: en **Authentication → URL Configuration**, pon en *Site URL* la dirección de tu web
    (`https://somosdeguinaldo.github.io/`). Así los correos de confirmación y de «olvidé mi contraseña» vuelven al juego.
@@ -103,10 +107,18 @@ En la tabla `jugadores`, una fila por persona: su nombre («cómo te llaman en e
 - juegos y vacas ganados y perdidos;
 - chinas ganadas y perdidas, y número de jugadas;
 - racha de victorias (la actual y la mejor);
+- las partidas abandonadas: salir a mitad (o cerrar la app) después de jugar alguna jugada cuenta como perdida y
+  corta la racha (en la mesa con amigos, recargar la página no, porque se vuelve a la misma partida);
 - si ha hecho el tutorial, la fecha de la última partida…
 
-Al ser JSON, se pueden añadir cosas nuevas más adelante (logros, bares desbloqueados, barajas, clasificaciones…)
-sin tocar la base de datos. Si alguien juega sin cuenta y luego se la crea, se queda con lo que llevaba jugado en ese dispositivo.
+**Nadie escribe su ficha a mano.** El juego no manda la ficha entera: manda lo que se acaba de jugar y la base de
+datos lo suma con la función `apuntar_progreso` (`supabase/progreso.sql`), que comprueba que cuadre (chinas, juegos y
+vacas de acuerdo con las jugadas, y no más jugadas de las que da tiempo a jugar). Así, dos móviles o dos pestañas a la
+vez no se borran lo ganado, y sin cobertura lo pendiente se guarda en el móvil y se manda luego. Del nombre sí se puede
+cambiar directamente (solo esa columna). Como el juego corre en el móvil de cada uno, esto no impide del todo las
+trampas, pero ya no se puede poner cualquier cifra.
+
+Si alguien juega sin cuenta y luego entra en la suya, se le suma lo que llevaba jugado en ese dispositivo.
 
 ## Jugar con amigos (la mesa del fondo)
 
@@ -120,7 +132,15 @@ mensajes), que viene activado en todos los proyectos. Solo hay que tener puesto 
 - Si al abrir una mesa sale «No se ha podido entrar en la mesa», mira en Supabase **Realtime → Settings** que esté
   activado **«Allow public access to channels»** (viene activado de serie).
 - La librería de Supabase (`@supabase/supabase-js@2.117.3`) se descarga de jsDelivr solo cuando alguien abre la mesa.
-- Quien abre la mesa lleva la partida: si cierra la página, se acaba para todos. Si se va otro, juega por él el
-  ordenador hasta que vuelva (con el mismo enlace y el mismo mote).
+- Quien abre la mesa lleva la partida: baraja y reparte en su móvil, y a cada uno le manda **solo sus cartas, cifradas**
+  (los demás no reciben la baraja ni pueden calcularla). Si cierra la página, se acaba para todos.
+- **Nadie puede hacerse pasar por otro**: cada móvil tiene su identidad (unas llaves que se guardan en él) y todo
+  mensaje va firmado. El código de la mesa sale de la llave de quien la abre, así que solo él puede mandar como
+  anfitrión; el enlace lleva además unas letras de más para comprobarlo mejor (`…/#mesa=K7QXM-ABCDEFG`).
+- Si se va alguien, juega por él el ordenador hasta que vuelva **desde el mismo móvil** con el enlace. Si alguien entra
+  con su mote desde otro móvil, no se le sienta solo: a quien abrió la mesa le sale un aviso para devolverle la silla.
+- Nadie se queda esperando: si a alguien se le va la app a segundo plano o se le apaga el móvil, al acabarse su cigarro
+  (y unos segundos más) se juega como si se le hubiera consumido; sin límite de tiempo, a los tres minutos decide el
+  ordenador por esa vez.
 - El plan gratuito de Supabase admite 200 conexiones a la vez (unas 50 mesas de cuatro) y 100 mensajes por segundo
   entre todas; una mesa manda uno o dos por segundo como mucho.

@@ -15,11 +15,14 @@ function rotate(list, first) {
 }
 
 // Reparte al azar las cartas que este jugador no ve, respetando lo que sabe:
-// quien cantó flor la tiene; quien ya echó carta sin cantarla, no.
+// quien cantó flor la tiene; quien ya echó carta sin cantarla, no. Y como no se baraja entre las tres jugadas
+// de un reparto, lo que salió en las anteriores (y lo que tuvo él) ya no puede estar en ninguna mano.
 function sampleWorld(game, seat, opts = {}) {
   const J = game.jugada;
   const playedBy = {};
   const seen = new Set(J.orig[seat]);
+  for (const id of game.vistasReparto || []) seen.add(id);
+  for (const id of (game.propias && game.propias[seat]) || []) seen.add(id);
   for (const bz of J.bazas) for (const p of bz.plays) { seen.add(p.card); (playedBy[p.seat] = playedBy[p.seat] || []).push(p.card); }
   const pool = ALL_IDS.filter(id => !seen.has(id));
   const others = J.participants.filter(s => s !== seat);
@@ -155,6 +158,11 @@ function decideTurn(game, p) {
   let best = evals[0];
   for (const e of evals) if (e.p >= evals[0].p - 0.04 && truqueRank(card(e.id)) < truqueRank(card(best.id))) best = e;
   const pT = evals[0].p;
+  // Con una mano perdida, mejor irse al mazo que enseñar las cartas (cuesta lo mismo: 1, o el truque querido)
+  if (p.canMazo && game.jugada.b >= 1 && !p.canSubir && pT < 0.03 && rnd() < 0.5) {
+    debug(game, s, `gana la jugada con ${pct(pT)} → se va al mazo`);
+    return { type: 'mazo', seat: s };
+  }
   let env = false, tru = false;
   if (p.canEnvido) {
     const pl = ligadoProb(game, s);
@@ -204,11 +212,12 @@ function decideFlor(game, seat) {
   return { kind };
 }
 
-// Respuestas de todos los jugadores del ordenador implicados (excepto el humano)
-function teamAnswers(game, p) {
+// Respuestas de todos los jugadores del ordenador implicados. «controla» dice de quiénes decide el ordenador
+// (por defecto, de todos menos el de este móvil; en la mesa con amigos, de los del bar y de los que se han ido)
+function teamAnswers(game, p, controla = s => !game.isHuman(s)) {
   const out = {};
   for (const s of p.seats) {
-    if (game.isHuman(s)) continue;
+    if (!controla(s)) continue;
     out[s] = p.type === 'florDecide' ? decideFlor(game, s) : decideResponse(game, p, s);
   }
   return out;
