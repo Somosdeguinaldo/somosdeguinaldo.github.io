@@ -1,369 +1,346 @@
-/* El Perro — la baraja. Baraja española de taberna: cartulina marfil, cada palo con su color (oros dorado, copas
-   granate, espadas azul, bastos verde) en el número, en el marco y en las pintas, para distinguirlas de un vistazo
-   aunque la carta se vea pequeña. El marco lleva su «pinta» (oros sin cortes, copas con uno, espadas con dos,
-   bastos con tres). Las figuras son de medio cuerpo, serias, sobre un fondo del color del palo; el perro y la perra
-   llevan además su perro. Todo es vectorial: se genera una vez como símbolos SVG y cada carta usa <use>.
+/* El Perro — la baraja. Dibujada al estilo de la baraja española de toda la vida: cartulina blanca, marco fino con
+   su «pinta» (oros sin cortes, copas con uno, espadas con dos, bastos con tres), el número en las esquinas y los
+   colores planos de siempre (amarillo, rojo, azul y verde) con contorno negro: oros amarillos con su cabeza, copas
+   rojas con tapa azul, espadas de hoja azul y empuñadura roja y amarilla, y bastos verdes y rojos. Las figuras, de
+   cuerpo entero. Los dibujos son propios; todo es vectorial: se genera una vez como símbolos SVG y cada carta usa <use>.
    Medidas de la carta: 200 × 296. */
 (function (root) {
 'use strict';
-const T = '#1c140e';          // tinta
-const PAPEL = '#f3e8cf', PAPEL2 = '#e9dabb';
-const PALO = {                // color del palo (número, marco y pintas), y el fondo de las figuras
-  O: { c: '#9a680c', claro: '#e8b93a', fondo: '#3d2a0a', fondo2: '#6b4a12' },
-  C: { c: '#a3161f', claro: '#d8453a', fondo: '#3a0b0f', fondo2: '#6a1a1c' },
-  E: { c: '#1b4a7a', claro: '#4f86bf', fondo: '#0d1c2e', fondo2: '#1d3a5c' },
-  B: { c: '#2a6a2f', claro: '#58a04f', fondo: '#0f2412', fondo2: '#22472a' },
-};
+const T = '#1a1714';               // tinta
+const BLANCO = '#fdfcf8';
 const C = {
-  oro: '#e2ac2c', oroC: '#f6d877', oroO: '#8d5c0b', rojo: '#b21f27', rojoC: '#dc4a3e', rojoO: '#5e0b10',
-  azul: '#1f4f80', azulO: '#0f2a46', acero: '#c9d4de', aceroC: '#eef3f7', aceroO: '#6f8499',
-  verde: '#2f6e33', verdeC: '#5fa756', verdeO: '#173d1b', madera: '#6e4320', maderaO: '#3c2410',
-  piel: '#dcae86', pielO: '#a8734b', blanco: '#f7f1e3', gris: '#8d8478', negro: '#16100c',
+  am: '#f6cd1f', amC: '#fbe27a', amO: '#d7960c', rojo: '#d3272b', rojoO: '#9c1419', azul: '#5aa6dc', azulC: '#a9d3f0', azulO: '#225f96',
+  verde: '#6cab43', verdeC: '#b5dc7c', verdeO: '#3a7424', piel: '#f6caa3', pielO: '#d99a72', blanco: '#ffffff', gris: '#c9c4ba',
+  marron: '#8a5a2b', crin: '#efe6d6', negro: '#26211d', pelo: '#7a4a22', barba: '#e9e4da',
 };
 const W = 200, H = 296;
 const PALOS = { O: 'oros', C: 'copas', E: 'espadas', B: 'bastos' };
 const n1 = v => Math.round(v * 10) / 10;
-const tr = (w = 2.4) => `stroke="${T}" stroke-width="${w}" stroke-linejoin="round" stroke-linecap="round"`;
+const tr = (w = 1.8) => `stroke="${T}" stroke-width="${w}" stroke-linejoin="round" stroke-linecap="round"`;
+// Un trazo grueso con contorno (brazos, piernas, mangos)
+const palo2 = (d, color, ancho) => `<path d="${d}" stroke="${T}" stroke-width="${ancho + 3}" fill="none" stroke-linecap="round" stroke-linejoin="round"/><path d="${d}" stroke="${color}" stroke-width="${ancho}" fill="none" stroke-linecap="round" stroke-linejoin="round"/>`;
 
 // ---------------------------------------------------------------- Las pintas (centradas en 0,0)
 function defs() {
-  // Oro: moneda con canto, estrella grabada y botón
-  let estrella = '';
-  for (let k = 0; k < 16; k++) {
-    const a = k * Math.PI / 8, r = k % 2 ? 15 : 31;
-    estrella += `${k ? 'L' : 'M'}${n1(r * Math.cos(a - Math.PI / 2))} ${n1(r * Math.sin(a - Math.PI / 2))} `;
-  }
-  let gotas = '';
-  for (let k = 0; k < 16; k++) { const a = (k + 0.5) * Math.PI / 8; gotas += `<circle cx="${n1(40 * Math.cos(a))}" cy="${n1(40 * Math.sin(a))}" r="2.3" fill="${C.oroO}"/>`; }
   return `
-  <pattern id="n-grano" patternUnits="userSpaceOnUse" width="7" height="7"><rect width="7" height="7" fill="${PAPEL}"/><circle cx="1.5" cy="2" r=".55" fill="#c9b48a" opacity=".55"/><circle cx="5" cy="5.5" r=".45" fill="#b8a07a" opacity=".45"/></pattern>
-  <radialGradient id="n-papel" cx=".5" cy=".45" r=".75"><stop offset=".6" stop-color="${PAPEL}" stop-opacity="0"/><stop offset="1" stop-color="#c8ad7c" stop-opacity=".5"/></radialGradient>
-  <linearGradient id="n-g-oro" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${C.oroC}"/><stop offset=".5" stop-color="${C.oro}"/><stop offset="1" stop-color="#b47a14"/></linearGradient>
-  <linearGradient id="n-g-copa" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="${C.rojoO}"/><stop offset=".35" stop-color="${C.rojoC}"/><stop offset="1" stop-color="${C.rojoO}"/></linearGradient>
-  <linearGradient id="n-g-acero" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="${C.aceroO}"/><stop offset=".42" stop-color="${C.aceroC}"/><stop offset=".55" stop-color="${C.acero}"/><stop offset="1" stop-color="#5a6f86"/></linearGradient>
-  <linearGradient id="n-g-basto" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="${C.verdeO}"/><stop offset=".38" stop-color="${C.verdeC}"/><stop offset="1" stop-color="${C.verdeO}"/></linearGradient>
-  ${['O', 'C', 'E', 'B'].map(p => `<radialGradient id="n-fondo-${p}" cx=".5" cy=".42" r=".7"><stop offset="0" stop-color="${PALO[p].fondo2}"/><stop offset="1" stop-color="${PALO[p].fondo}"/></radialGradient>`).join('')}
-  <pattern id="n-armino" patternUnits="userSpaceOnUse" width="12" height="14"><rect width="12" height="14" fill="${C.blanco}"/><path d="M6 2.5 l-1.8 5 h3.6 Z M2 10.5 l.9 2.6 h-1.8 Z" fill="${T}"/></pattern>
-  <pattern id="n-trama" patternUnits="userSpaceOnUse" width="20" height="20" patternTransform="rotate(45)"><rect width="20" height="20" fill="#5b1218"/><path d="M0 0 H20 M0 0 V20" stroke="#c99a3a" stroke-width="1.4" opacity=".65"/><rect x="7" y="7" width="6" height="6" fill="none" stroke="#c99a3a" stroke-width="1.1" opacity=".55"/><circle cx="10" cy="10" r="1.2" fill="#e2b85a" opacity=".8"/></pattern>
+  <pattern id="n-trama" patternUnits="userSpaceOnUse" width="16" height="16" patternTransform="rotate(45)"><rect width="16" height="16" fill="#b3202a"/><path d="M0 0 H16 M0 0 V16" stroke="#f3e3c0" stroke-width="1.2" opacity=".8"/><circle cx="8" cy="8" r="1.8" fill="#f3e3c0"/></pattern>
+  <pattern id="n-armino" patternUnits="userSpaceOnUse" width="11" height="13"><rect width="11" height="13" fill="${C.blanco}"/><path d="M5.5 2 l-1.6 4.6 h3.2 Z M2 9.5 l.8 2.4 h-1.6 Z" fill="${T}"/></pattern>
+  <pattern id="n-brocado" patternUnits="userSpaceOnUse" width="16" height="18"><rect width="16" height="18" fill="${C.rojo}"/><path d="M8 2 C12 5 12 9 8 12 C4 9 4 5 8 2 Z" fill="${C.am}" stroke="${C.amO}" stroke-width=".8"/><circle cx="0" cy="15" r="1.6" fill="${C.am}"/><circle cx="16" cy="15" r="1.6" fill="${C.am}"/></pattern>
   <g id="p-oro">
-    <circle r="50" fill="${C.oroO}" stroke="${T}" stroke-width="3.4"/>
-    <circle r="45" fill="url(#n-g-oro)"/>
-    ${gotas}
-    <circle r="35" fill="none" stroke="${C.oroO}" stroke-width="2.6"/>
-    <path d="${estrella}Z" fill="${C.oroO}" opacity=".9"/>
-    <circle r="11" fill="url(#n-g-oro)" stroke="${T}" stroke-width="2.4"/><circle r="4.5" fill="${C.rojo}" stroke="${T}" stroke-width="1.2"/>
-    <path d="M-33 -26 A42 42 0 0 1 -10 -41" stroke="#fff0b0" stroke-width="4.5" fill="none" stroke-linecap="round" opacity=".75"/>
+    <circle r="34" fill="${C.am}" stroke="${T}" stroke-width="2"/>
+    <circle r="30" fill="none" stroke="${C.amO}" stroke-width="3"/>
+    <circle r="26.5" fill="${C.amC}" stroke="${C.rojo}" stroke-width="1.4"/>
+    ${cabezaMoneda()}
   </g>
   <g id="p-copa">
-    <path d="M-27 50 Q-12 40 -7 27 H7 Q12 40 27 50 Q0 58 -27 50 Z" fill="url(#n-g-oro)" stroke="${T}" stroke-width="3"/>
-    <path d="M-7 4 H7 L6 28 H-6 Z" fill="url(#n-g-oro)" stroke="${T}" stroke-width="2.6"/>
-    <ellipse cy="10" rx="12" ry="6.5" fill="${C.rojoO}" stroke="${T}" stroke-width="2.4"/>
-    <path d="M-34 -34 C-36 -2 -16 6 0 6 C16 6 36 -2 34 -34 Z" fill="url(#n-g-copa)" stroke="${T}" stroke-width="3.2"/>
-    <path d="M-33.6 -22 Q0 -14 33.6 -22" stroke="${C.oro}" stroke-width="4" fill="none"/>
-    <path d="M-30 -8 Q0 0 30 -8" stroke="${C.oro}" stroke-width="2.4" fill="none"/>
-    <ellipse cy="-34" rx="34" ry="8.5" fill="url(#n-g-oro)" stroke="${T}" stroke-width="3.2"/>
-    <ellipse cy="-34" rx="25" ry="4.5" fill="${C.rojoO}"/>
-    <path d="M-24 -14 Q-28 -22 -27 -28" stroke="#ff9b8a" stroke-width="3" fill="none" stroke-linecap="round" opacity=".6"/>
+    <path d="M-15 32 Q-8 26 -5 20 H5 Q8 26 15 32 Q0 37 -15 32 Z" fill="${C.am}" ${tr(1.6)}/>
+    <path d="M-4.5 5 H4.5 L3.5 21 H-3.5 Z" fill="${C.am}" ${tr(1.4)}/>
+    <ellipse cy="12" rx="7" ry="3.6" fill="${C.amO}" ${tr(1.2)}/>
+    <path d="M-24 -8 C-25 10 -10 14 0 14 C10 14 25 10 24 -8 Z" fill="${C.rojo}" ${tr(1.8)}/>
+    <path d="M-23.6 -2 Q0 4 23.6 -2" stroke="${C.am}" stroke-width="3" fill="none"/>
+    <path d="M0 2 L4 7 L0 12 L-4 7 Z" fill="${C.am}" stroke="${C.amO}" stroke-width=".8"/>
+    <path d="M-25 -8 Q0 -2 25 -8 L23 -12 Q0 -6 -23 -12 Z" fill="${C.am}" ${tr(1.4)}/>
+    <path d="M-22 -12 C-20 -30 20 -30 22 -12 Q0 -6 -22 -12 Z" fill="${C.azul}" ${tr(1.8)}/>
+    <path d="M-14 -16 C-12 -24 -4 -27 2 -27" stroke="${C.azulC}" stroke-width="2.6" fill="none" stroke-linecap="round"/>
+    <path d="M-4 -26 Q0 -34 4 -26 Z" fill="${C.am}" ${tr(1.2)}/><circle cy="-33" r="2.6" fill="${C.am}" ${tr(1.1)}/>
   </g>
   <g id="p-espada">
-    <path d="M0 -104 L8.5 -86 L8.5 42 L-8.5 42 L-8.5 -86 Z" fill="url(#n-g-acero)" stroke="${T}" stroke-width="2.8"/>
-    <path d="M0 -92 V38" stroke="${C.aceroO}" stroke-width="2"/>
-    <path d="M-36 40 Q-30 50 -12 48 H12 Q30 50 36 40" fill="none" stroke="${T}" stroke-width="11" stroke-linecap="round"/>
-    <path d="M-36 40 Q-30 50 -12 48 H12 Q30 50 36 40" fill="none" stroke="${C.azul}" stroke-width="6.5" stroke-linecap="round"/>
-    <circle cx="-37" cy="39" r="6" fill="${C.oro}" stroke="${T}" stroke-width="2.2"/><circle cx="37" cy="39" r="6" fill="${C.oro}" stroke="${T}" stroke-width="2.2"/>
-    <rect x="-7" y="52" width="14" height="34" rx="3" fill="${C.azulO}" stroke="${T}" stroke-width="2.4"/>
-    <path d="M-7 61 L7 57 M-7 69 L7 65 M-7 77 L7 73" stroke="${C.oro}" stroke-width="2.2"/>
-    <circle cy="94" r="9.5" fill="url(#n-g-oro)" stroke="${T}" stroke-width="2.4"/>
+    <path d="M0 -62 L6.5 -50 L6.5 30 L-6.5 30 L-6.5 -50 Z" fill="${C.azulC}" ${tr(1.7)}/>
+    <path d="M0 -56 V28" stroke="${C.azulO}" stroke-width="1.5"/><path d="M6.5 -50 L6.5 30" stroke="${C.azul}" stroke-width="2.6"/>
+    <path d="M-16 32 Q-8 27 0 30 Q8 27 16 32 L16 35 Q8 32 0 34 Q-8 32 -16 35 Z" fill="${C.am}" ${tr(1.4)}/>
+    <circle cx="-17" cy="33.5" r="3" fill="${C.rojo}" ${tr(1.1)}/><circle cx="17" cy="33.5" r="3" fill="${C.rojo}" ${tr(1.1)}/>
+    <rect x="-4" y="35" width="8" height="18" rx="2" fill="${C.rojo}" ${tr(1.4)}/>
+    <path d="M-4 40 L4 38 M-4 45 L4 43 M-4 50 L4 48" stroke="${C.am}" stroke-width="1.4"/>
+    <circle cy="57" r="5" fill="${C.am}" ${tr(1.4)}/>
   </g>
-  <g id="p-basto">
-    <path d="M-8 100 C-10 62 -13 22 -17 -36 C-20 -78 -13 -100 0 -102 C14 -101 21 -80 19 -38 C16 22 11 62 8 100 Z" fill="url(#n-g-basto)" stroke="${T}" stroke-width="3"/>
-    ${[[-15, -46, -30], [17, -6, 26], [-13, 34, -24], [15, -74, 22], [10, 66, 18], [-16, -78, -20]].map(([x, y, a]) => `<g transform="translate(${x} ${y}) rotate(${a})"><ellipse rx="7" ry="4.6" fill="${C.verdeO}" stroke="${T}" stroke-width="2"/><ellipse rx="2.6" ry="1.6" fill="${C.verdeC}"/></g>`).join('')}
-    <path d="M-5 88 C-7 52 -8 12 -11 -42 M5 72 C6 32 8 2 11 -52" stroke="${C.verdeO}" stroke-width="2" fill="none" opacity=".75"/>
-    <ellipse cy="99" rx="8.4" ry="3.6" fill="#d7b06a" stroke="${T}" stroke-width="2.2"/>
-    <path d="M-10 -84 C-6 -96 4 -98 10 -90" stroke="#a9de8f" stroke-width="3.4" fill="none" stroke-linecap="round" opacity=".6"/>
+  <g id="p-espada-larga">
+    <path d="M0 -112 L5.5 -100 L5.5 62 L-5.5 62 L-5.5 -100 Z" fill="${C.azulC}" ${tr(1.7)}/>
+    <path d="M0 -104 V60" stroke="${C.azulO}" stroke-width="1.5"/><path d="M5.5 -100 V62" stroke="${C.azul}" stroke-width="2.2"/>
+    <path d="M-18 64 Q-6 58 0 62 Q6 58 18 64 L18 68 Q6 64 0 66 Q-6 64 -18 68 Z" fill="${C.am}" ${tr(1.4)}/>
+    <path d="M12 66 C26 70 28 88 18 96 C14 99 8 98 6 95" stroke="${T}" stroke-width="6" fill="none" stroke-linecap="round"/>
+    <path d="M12 66 C26 70 28 88 18 96 C14 99 8 98 6 95" stroke="${C.am}" stroke-width="3.4" fill="none" stroke-linecap="round"/>
+    <rect x="-4.5" y="67" width="9" height="26" rx="2.5" fill="${C.rojo}" ${tr(1.4)}/>
+    <path d="M-4.5 72 L4.5 70 M-4.5 78 L4.5 76 M-4.5 84 L4.5 82 M-4.5 90 L4.5 88" stroke="${C.am}" stroke-width="1.4"/>
+    <circle cy="98" r="6" fill="${C.am}" ${tr(1.4)}/><circle cy="98" r="2.4" fill="${C.rojo}"/>
   </g>
-  <g id="p-perro">${cabezaPerro()}</g>
-  <g id="p-perra">${cabezaPerra()}</g>`;
+  <g id="p-basto-v">${basto(C.verde, C.verdeO, C.am)}</g>
+  <g id="p-basto-r">${basto(C.rojo, C.rojoO, C.am)}</g>
+  <g id="p-basto-a">${basto(C.am, C.amO, C.amC)}</g>`;
 }
-
-// ---------------------------------------------------------------- El perro y la perra: un mastín con carlanca y una galga
-function cabezaPerro() {
-  // Mastín de frente, con el ceño fruncido, los dientes fuera y la carlanca (el collar de pinchos de los mastines)
-  let pinchos = '';
-  for (let k = -3; k <= 3; k++) { const x = k * 9.5, y = 33 + Math.abs(k) * -1.6; pinchos += `<path d="M${x - 3.6} ${y} L${x} ${y + 11} L${x + 3.6} ${y} Z" fill="${C.aceroC}" stroke="${T}" stroke-width="1.6"/>`; }
-  return `
-    <path d="M-30 -18 C-44 -24 -46 4 -38 22 C-34 12 -32 0 -24 -6 Z" fill="#5a3a20" ${tr(2.2)}/>
-    <path d="M30 -18 C44 -24 46 4 38 22 C34 12 32 0 24 -6 Z" fill="#5a3a20" ${tr(2.2)}/>
-    <path d="M-28 -24 C-26 -38 26 -38 28 -24 C34 -6 32 16 22 30 L-22 30 C-32 16 -34 -6 -28 -24 Z" fill="#a8743f" ${tr(2.6)}/>
-    <path d="M-16 -2 C-12 -10 12 -10 16 -2 C22 12 18 30 0 34 C-18 30 -22 12 -16 -2 Z" fill="#7a4f28"/>
-    <path d="M-20 -14 L-6 -8 M20 -14 L6 -8" stroke="${T}" stroke-width="3.4"/>
-    <path d="M-17 -6 Q-12 -10 -7 -6 Q-12 -3 -17 -6 Z M17 -6 Q12 -10 7 -6 Q12 -3 17 -6 Z" fill="#f2c94c" stroke="${T}" stroke-width="1.6"/>
-    <circle cx="-12" cy="-6" r="1.8" fill="${T}"/><circle cx="12" cy="-6" r="1.8" fill="${T}"/>
-    <path d="M-10 6 Q0 2 10 6 L6 13 Q0 15 -6 13 Z" fill="${T}"/>
-    <path d="M-18 16 Q0 32 18 16 Q14 28 0 30 Q-14 28 -18 16 Z" fill="${C.rojoO}" ${tr(2)}/>
-    <path d="M-12 18 L-9 25 L-6 19 M6 19 L9 25 L12 18" fill="${C.blanco}" stroke="${T}" stroke-width="1.2"/>
-    <path d="M-3 14 V20 M3 14 V20" stroke="${T}" stroke-width="1.4"/>
-    <path d="M-30 30 Q0 40 30 30 L30 36 Q0 46 -30 36 Z" fill="${C.maderaO}" ${tr(1.8)}/>
-    ${pinchos}`;
+// La cabeza de perfil de las monedas (dibujo propio, a la antigua)
+function cabezaMoneda() {
+  // Cabeza laureada de perfil, mirando a la izquierda, a línea roja como en las monedas antiguas
+  const hojas = [[-5, -19, -30], [0, -19.5, -12], [5, -18.5, 8], [9.5, -16, 26], [13, -12, 44]]
+    .map(([x, y, a]) => `<path d="M0 0 C2 -2.6 6 -2.6 8 0 C6 2.6 2 2.6 0 0 Z" transform="translate(${x} ${y}) rotate(${a})" fill="${C.verde}" stroke="${C.rojo}" stroke-width=".8"/>`).join('');
+  return `<g stroke="${C.rojo}" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M-6 -20 C2 -24 14 -19 16 -9 C18 -1 15 6 12 10 L14 21 L-4 21 L-5 14 C-9 14 -12 12 -12 10 L-11 7 L-13.5 4.5 L-12 2 L-17 -1 L-11.5 -8 C-11.5 -14 -9.5 -18.5 -6 -20 Z" fill="${C.amC}"/>
+    <path d="M-2 -14 C4 -12 9 -6 10 1 M3 -16 C9 -12 13 -6 13 2 M7 4 C9 7 11 8 13 8" fill="none"/>
+    <path d="M4 -2 C6 -4 8 -2 7 1 C6 3 4 3 4 1" fill="none"/>
+    <path d="M-10 -6 Q-7.5 -8 -5 -6" fill="none"/><circle cx="-7.6" cy="-5.6" r=".9" fill="${C.rojo}" stroke="none"/>
+    <path d="M-14 4.5 L-10 5" fill="none"/>
+    <path d="M-12 23 C-4 26 12 26 20 22" fill="none"/>
+    ${hojas}
+  </g>`;
 }
-function cabezaPerra() {
-  // Una podenca de frente: orejas de punta, mirada atenta y collar con su medalla
+// Un basto: porra con nudos, gorda arriba
+function basto(color, oscuro, brillo) {
   return `
-    <path d="M-24 -14 L-34 -48 L-12 -26 Z M24 -14 L34 -48 L12 -26 Z" fill="#c99b62" ${tr(2.4)}/>
-    <path d="M-23 -20 L-29 -40 L-16 -27 Z M23 -20 L29 -40 L16 -27 Z" fill="#8a5e34"/>
-    <path d="M-24 -22 C-22 -36 22 -36 24 -22 C28 -6 24 10 12 26 Q0 34 -12 26 C-24 10 -28 -6 -24 -22 Z" fill="#dcb07a" ${tr(2.6)}/>
-    <path d="M-8 -4 C-6 -26 6 -26 8 -4 C10 10 8 22 0 28 C-8 22 -10 10 -8 -4 Z" fill="#f1dcb8"/>
-    <path d="M-17 -8 Q-12 -13 -6 -8 Q-12 -4 -17 -8 Z M17 -8 Q12 -13 6 -8 Q12 -4 17 -8 Z" fill="#e8b94a" stroke="${T}" stroke-width="1.6"/>
-    <circle cx="-11.5" cy="-8" r="2" fill="${T}"/><circle cx="11.5" cy="-8" r="2" fill="${T}"/>
-    <path d="M-18 -14 L-7 -12 M18 -14 L7 -12" stroke="${T}" stroke-width="2"/>
-    <path d="M-6 16 Q0 13 6 16 L3 21 Q0 22 -3 21 Z" fill="${T}"/>
-    <path d="M0 22 V26 M-5 28 Q0 30 5 28" stroke="${T}" stroke-width="1.6" fill="none"/>
-    <path d="M-20 26 Q0 38 20 26 L21 33 Q0 45 -21 33 Z" fill="${C.rojo}" ${tr(1.8)}/>
-    <circle cx="0" cy="42" r="5" fill="url(#n-g-oro)" stroke="${T}" stroke-width="1.6"/>`;
+    <path d="M-6 58 C-8 34 -16 6 -18 -22 C-20 -46 -10 -62 0 -62 C10 -62 20 -46 18 -22 C16 6 8 34 6 58 C3 61 -3 61 -6 58 Z" fill="${color}" ${tr(1.8)}/>
+    <path d="M-2 50 C-4 30 -9 4 -10 -22 C-11 -40 -6 -52 0 -55" stroke="${brillo}" stroke-width="5" fill="none" stroke-linecap="round" opacity=".95"/>
+    ${[[-17, -28, -1], [17, -8, 1], [-14, 12, -1], [12, 26, 1], [-9, 38, -1]].map(([x, y, s]) => `<path d="M${x} ${y} q${-4 * s} -2 ${-5 * s} -6 q${3 * s} 0 ${5 * s} 2" fill="${color}" ${tr(1.4)}/>`).join('')}
+    <path d="M6 -50 C10 -42 12 -30 11 -18" stroke="${oscuro}" stroke-width="1.6" fill="none" opacity=".6"/>`;
 }
 
 // ---------------------------------------------------------------- Colocación de las pintas en las cartas del 1 al 7
-const usar = (id, x, y, s, r = 0, extra = '') => `<use href="#p-${id}" transform="translate(${n1(x)} ${n1(y)}) rotate(${r}) scale(${s})${extra}"/>`;
-const IZ = 80, DE = 138, MD = 109;   // columnas de las pintas (apartadas del número grande de la esquina)
+const usar = (id, x, y, s, r = 0) => `<use href="#p-${id}" transform="translate(${n1(x)} ${n1(y)}) rotate(${r}) scale(${s})"/>`;
 const REDONDAS = {
-  2: [[MD, 102], [MD, 198]],
-  3: [[MD, 86], [MD, 150], [MD, 214]],
-  4: [[IZ, 104], [DE, 104], [IZ, 196], [DE, 196]],
-  5: [[IZ, 96], [DE, 96], [MD, 150], [IZ, 204], [DE, 204]],
-  6: [[IZ, 90], [DE, 90], [IZ, 150], [DE, 150], [IZ, 210], [DE, 210]],
-  7: [[IZ, 84], [DE, 84], [MD, 124], [IZ, 166], [DE, 166], [IZ, 216], [DE, 216]],
+  2: [[100, 92], [100, 204]],
+  3: [[66, 80], [132, 148], [66, 216]],
+  4: [[64, 92], [136, 92], [64, 204], [136, 204]],
+  5: [[64, 84], [136, 84], [100, 148], [64, 212], [136, 212]],
+  6: [[64, 80], [136, 80], [64, 148], [136, 148], [64, 216], [136, 216]],
+  7: [[64, 76], [136, 76], [100, 114], [64, 158], [136, 158], [64, 218], [136, 218]],
 };
-const TAM_RED = { 2: 0.64, 3: 0.56, 4: 0.54, 5: 0.5, 6: 0.47, 7: 0.43 };
-const TAM_COPA = { 2: 0.82, 3: 0.6, 4: 0.7, 5: 0.62, 6: 0.56, 7: 0.49 };
-function largas(n) {
-  // [x, y, giro]; las espadas y los bastos se cruzan como en la baraja de siempre
-  const cx = 108, cy = 156;
-  if (n === 2) return [[cx, cy, -25], [cx, cy, 25]];
-  if (n === 3) return [[cx, cy, -30], [cx, cy, 0], [cx, cy, 30]];
-  if (n === 4) return [[70, cy, -5], [95, cy, 5], [120, cy, -5], [145, cy, 5]];
-  if (n === 5) return [[cx, cy, 34], [70, cy, -4], [95, cy, 4], [120, cy, -4], [145, cy, 4]];
-  if (n === 6) return [[cx, cy, 36], [cx, cy, -36], [70, cy, -4], [95, cy, 4], [120, cy, -4], [145, cy, 4]];
-  return [[cx, cy, 38], [cx, cy, -38], [66, cy, -3], [86, cy, 3], [106, cy, -3], [126, cy, 3], [146, cy, -3]];
+const TAM_ORO = { 2: 1.25, 3: 1.05, 4: 1.0, 5: 0.9, 6: 0.9, 7: 0.84 };
+const TAM_COPA = { 2: 1.45, 3: 1.2, 4: 1.15, 5: 1.0, 6: 0.95, 7: 0.9 };
+function espadas(n) {
+  // Como en la baraja de siempre: las largas, derechas; las cortas, en aspa, y en filas de dos
+  if (n === 2) return usar('espada-larga', 72, 144, 0.95) + usar('espada-larga', 128, 152, 0.95, 180);
+  if (n === 3) return usar('espada-larga', 62, 148, 0.92) + usar('espada-larga', 100, 148, 0.92, 180) + usar('espada-larga', 138, 148, 0.92);
+  const aspa = [[66, 100, 145], [134, 100, -145], [66, 196, 35], [134, 196, -35]].map(([x, y, r]) => usar('espada', x, y, 0.95, r)).join('');
+  if (n === 4) return aspa;
+  if (n === 5) return aspa + usar('espada', 100, 148, 0.95, 90);
+  const filas = [[66, 84], [134, 84], [66, 148], [134, 148], [66, 212], [134, 212]].map(([x, y], i) => usar('espada', x, y, 0.8, i % 2 ? 0 : 0)).join('');
+  if (n === 6) return [[62, 86], [100, 86], [138, 86], [62, 210], [100, 210], [138, 210]].map(([x, y]) => usar('espada', x, y, 0.92, y < 150 ? 180 : 0)).join('');
+  return [[62, 82], [100, 82], [138, 82], [62, 214], [100, 214], [138, 214]].map(([x, y]) => usar('espada', x, y, 0.86, y < 150 ? 180 : 0)).join('') + usar('espada', 100, 148, 0.92, 90) + (filas && '');
+}
+function bastos(n) {
+  const v = (x, y, s, r, c) => usar('basto-' + c, x, y, s, r);
+  if (n === 2) return v(72, 148, 1.12, 0, 'v') + v(128, 148, 1.12, 180, 'r');
+  const largo = (x, y, r, c) => `<use href="#p-basto-${c}" transform="translate(${x} ${y}) rotate(${r}) scale(.92 1.32)"/>`;
+  if (n === 3) return largo(100, 150, -34, 'v') + largo(100, 150, 34, 'a') + largo(100, 150, 0, 'r') +
+    `<path d="M72 160 C88 168 112 168 128 160 L130 170 C112 178 88 178 70 170 Z" fill="${C.azulC}" ${tr(1.4)}/>`;
+  const aspa = [[64, 92, -35, 'v'], [136, 92, 35, 'r'], [64, 204, -145, 'r'], [136, 204, 145, 'v']].map(([x, y, r, c]) => v(x, y, 0.8, r, c)).join('');
+  if (n === 4) return aspa;
+  if (n === 5) return aspa + v(100, 148, 0.8, 90, 'a');
+  const filas = [[62, 82, 0, 'v'], [100, 82, 0, 'r'], [138, 82, 0, 'v'], [62, 214, 180, 'r'], [100, 214, 180, 'v'], [138, 214, 180, 'r']].map(([x, y, r, c]) => v(x, y, 0.72, r, c)).join('');
+  if (n === 6) return filas;
+  return filas + v(100, 148, 0.72, 90, 'a');
 }
 
 // ---------------------------------------------------------------- Los ases
 function asOros() {
-  let rayos = '';
-  for (let k = 0; k < 24; k++) {
-    const a = k * Math.PI / 12, r1 = 66, r2 = k % 2 ? 82 : 94, d = 0.1;
-    rayos += `<path d="M${n1(100 + r1 * Math.cos(a - d))} ${n1(150 + r1 * Math.sin(a - d))} L${n1(100 + r2 * Math.cos(a))} ${n1(150 + r2 * Math.sin(a))} L${n1(100 + r1 * Math.cos(a + d))} ${n1(150 + r1 * Math.sin(a + d))} Z" fill="${k % 2 ? C.rojo : C.oro}" stroke="${T}" stroke-width="1.6"/>`;
-  }
-  return `<g transform="translate(6 6)">${rayos}${usar('oro', 100, 150, 1.32)}</g>`;
+  // La moneda grande con su laurel y una cinta con el nombre del bar
+  const hoja = (x, y, a) => `<path d="M0 0 C5 -6 14 -6 19 0 C14 6 5 6 0 0 Z" transform="translate(${x} ${y}) rotate(${a})" fill="${C.verde}" ${tr(1.3)}/>`;
+  let laurel = '';
+  for (let k = 0; k < 7; k++) { const a = 196 + k * 16; laurel += hoja(n1(100 + 74 * Math.cos(a * Math.PI / 180)), n1(134 + 74 * Math.sin(a * Math.PI / 180)), a + 100); laurel += hoja(n1(100 + 74 * Math.cos((344 - k * 16) * Math.PI / 180)), n1(134 + 74 * Math.sin((344 - k * 16) * Math.PI / 180)), 344 - k * 16 + 80); }
+  return `${laurel}${usar('oro', 100, 134, 2)}
+    <path d="M44 226 L62 214 L138 214 L156 226 L138 238 L62 238 Z" fill="${C.rojo}" ${tr(1.6)}/>
+    <path d="M44 226 L36 220 L40 232 Z M156 226 L164 220 L160 232 Z" fill="${C.rojoO}" ${tr(1.2)}/>
+    <text x="100" y="232" text-anchor="middle" font-family="Alegreya SC, Georgia, serif" font-weight="800" font-size="17" fill="${C.am}" letter-spacing="1">DOBLE J</text>`;
 }
 function asCopas() {
-  return `<g transform="translate(8 10)">${usar('copa', 100, 150, 1.8)}
-    <path d="M100 46 L106 58 L100 70 L94 58 Z" fill="${C.oro}" ${tr(2)}/></g>`;
+  // Copa alta y labrada
+  return `<g transform="translate(100 150)">
+    <path d="M-34 104 Q-18 92 -10 80 H10 Q18 92 34 104 Q0 114 -34 104 Z" fill="${C.azul}" ${tr(1.8)}/>
+    <path d="M-30 104 Q0 98 30 104" stroke="${C.am}" stroke-width="3" fill="none"/>
+    <path d="M-8 36 H8 L10 80 H-10 Z" fill="${C.am}" ${tr(1.6)}/>
+    <ellipse cy="50" rx="13" ry="7" fill="${C.amO}" ${tr(1.4)}/><ellipse cy="66" rx="10" ry="5" fill="${C.rojo}" ${tr(1.2)}/>
+    <path d="M-40 -34 C-44 10 -18 36 0 36 C18 36 44 10 40 -34 Z" fill="${C.rojo}" ${tr(2)}/>
+    <path d="M-30 -20 C-30 6 -14 22 0 24 C14 22 30 6 30 -20 Z" fill="none" stroke="${C.am}" stroke-width="3"/>
+    ${[-20, 0, 20].map(x => `<path d="M${x} -10 L${x + 5} -2 L${x} 6 L${x - 5} -2 Z" fill="${C.am}" stroke="${C.amO}" stroke-width="1"/>`).join('')}
+    <path d="M-42 -34 Q0 -26 42 -34 L40 -42 Q0 -34 -40 -42 Z" fill="${C.am}" ${tr(1.6)}/>
+    <path d="M-38 -42 C-36 -74 36 -74 38 -42 Q0 -34 -38 -42 Z" fill="${C.azul}" ${tr(2)}/>
+    <path d="M-26 -50 C-24 -62 -10 -68 2 -68" stroke="${C.azulC}" stroke-width="4" fill="none" stroke-linecap="round"/>
+    <path d="M-24 -46 Q0 -42 24 -46" stroke="${C.am}" stroke-width="2.4" fill="none"/>
+    <path d="M-8 -68 Q0 -84 8 -68 Z" fill="${C.am}" ${tr(1.4)}/>
+    <path d="M0 -84 C-10 -92 -8 -104 0 -108 C8 -104 10 -92 0 -84 Z" fill="${C.rojo}" ${tr(1.4)}/>
+  </g>`;
 }
 function asEspadas() {
-  const s = 'M100 64 C132 74 134 94 100 102 C66 110 68 130 100 136 C130 142 134 160 104 170';
-  return `<g transform="translate(8 10)">${usar('espada', 100, 146, 1.18)}
-    <path d="${s}" fill="none" stroke="${T}" stroke-width="12" stroke-linecap="round"/>
-    <path d="${s}" fill="none" stroke="${C.rojo}" stroke-width="7.5" stroke-linecap="round"/>
-    <path d="${s}" fill="none" stroke="${C.oro}" stroke-width="2.2" stroke-linecap="round" stroke-dasharray="6 6"/></g>`;
+  // La espada grande, con su cinta
+  const cinta = 'M84 70 C122 80 124 100 92 110 C62 120 70 140 104 148 C130 154 128 176 98 186';
+  return `${usar('espada-larga', 100, 136, 1.22, 0)}
+    <path d="${cinta}" stroke="${T}" stroke-width="12" fill="none" stroke-linecap="round"/>
+    <path d="${cinta}" stroke="${C.rojo}" stroke-width="8.5" fill="none" stroke-linecap="round"/>
+    <path d="${cinta}" stroke="${C.am}" stroke-width="2" fill="none" stroke-dasharray="5 7" stroke-linecap="round"/>`;
 }
 function asBastos() {
-  const hoja = (x, y, a, s = 1) => `<g transform="translate(${x} ${y}) rotate(${a}) scale(${s})"><path d="M0 0 C7 -9 20 -9 28 0 C20 9 7 9 0 0 Z" fill="${C.verde}" stroke="${T}" stroke-width="2"/><path d="M2 0 H24" stroke="${C.verdeO}" stroke-width="1.4"/></g>`;
-  return `<g transform="translate(8 8)">${usar('basto', 100, 150, 1.16, -16)}${hoja(76, 110, 200)}${hoja(124, 170, -20)}${hoja(86, 70, 220, 0.8)}${hoja(118, 214, -30, 0.8)}</g>`;
+  const hoja = (x, y, a) => `<g transform="translate(${x} ${y}) rotate(${a})"><path d="M0 0 C6 -8 18 -8 24 0 C18 8 6 8 0 0 Z" fill="${C.verde}" ${tr(1.4)}/><path d="M2 0 H21" stroke="${C.verdeO}" stroke-width="1.2"/></g>`;
+  return `${usar('basto-r', 100, 146, 1.75, -24)}${hoja(70, 124, 200)}${hoja(128, 176, -18)}${hoja(80, 80, 220)}${hoja(124, 220, -30)}${hoja(138, 120, -60)}`;
 }
 
-// ---------------------------------------------------------------- Las figuras: sota (10), caballo (11) y rey (12), de medio cuerpo
+// ---------------------------------------------------------------- Las figuras: sota (10), caballo (11) y rey (12), de cuerpo entero
+// Colores de cada palo: jubón, faldón, mangas, calzas (una de cada color) y gorro
 const ROPA = {
-  O: { a: C.rojo, b: C.oro, c: C.azul, pelo: '#3a2414' },
-  C: { a: C.azul, b: C.rojo, c: C.oro, pelo: '#5a3618' },
-  E: { a: C.verde, b: C.azul, c: C.rojo, pelo: '#1f1611' },
-  B: { a: '#8a5a14', b: C.verde, c: C.rojo, pelo: '#4a2c16' },
+  O: { jubon: C.rojo, falda: C.am, manga: C.azul, calza1: C.rojo, calza2: C.am, gorro: C.rojo, pluma: C.am, capa: C.azul },
+  C: { jubon: C.verde, falda: C.azul, manga: C.am, calza1: C.azul, calza2: C.rojo, gorro: C.verde, pluma: C.azul, capa: C.verde },
+  E: { jubon: C.azul, falda: C.rojo, manga: C.am, calza1: C.rojo, calza2: C.rojo, gorro: C.rojo, pluma: C.azul, capa: C.rojo },
+  B: { jubon: C.rojo, falda: C.azul, manga: C.am, calza1: C.verde, calza2: C.rojo, gorro: C.am, pluma: C.rojo, capa: C.azul },
 };
-// Una cara seria: cejas fruncidas, nariz, bigote si toca
-function cara3(x, y, s, o = {}) {
-  const k = v => n1(v * s);
-  const P = (px, py) => `${n1(x + px * s)} ${n1(y + py * s)}`;
+function cara(x, y, r, o = {}) {
+  // Cara de tres cuartos mirando un poco a la izquierda, al estilo de los naipes antiguos
   return `
-    <path d="M${P(-22, -6)} C${P(-23, -32)} ${P(23, -32)} ${P(22, -6)} C${P(22, 18)} ${P(12, 32)} ${P(0, 34)} C${P(-12, 32)} ${P(-22, 18)} ${P(-22, -6)} Z" fill="${C.piel}" ${tr(2.4)}/>
-    <path d="M${P(12, 30)} C${P(19, 22)} ${P(22, 10)} ${P(22, -6)} C${P(16, 6)} ${P(14, 20)} ${P(6, 32)} Z" fill="${C.pielO}" opacity=".55"/>
-    <path d="M${P(-15, -6)} L${P(-4, -3)} M${P(15, -6)} L${P(4, -3)}" stroke="${T}" stroke-width="${k(3.4)}" stroke-linecap="round"/>
-    <path d="M${P(-14, 2)} Q${P(-9, -1)} ${P(-4, 2)} Q${P(-9, 4)} ${P(-14, 2)} Z M${P(14, 2)} Q${P(9, -1)} ${P(4, 2)} Q${P(9, 4)} ${P(14, 2)} Z" fill="${C.blanco}" stroke="${T}" stroke-width="${k(1.4)}"/>
-    <circle cx="${P(-9, 2).split(' ')[0]}" cy="${P(-9, 2).split(' ')[1]}" r="${k(1.7)}" fill="${T}"/><circle cx="${P(9, 2).split(' ')[0]}" cy="${P(9, 2).split(' ')[1]}" r="${k(1.7)}" fill="${T}"/>
-    <path d="M${P(0, 0)} L${P(-3, 14)} L${P(3, 15)}" stroke="${T}" stroke-width="${k(1.8)}" fill="none"/>
-    ${o.bigote ? `<path d="M${P(-12, 22)} C${P(-6, 15)} ${P(-2, 18)} ${P(0, 19)} C${P(2, 18)} ${P(6, 15)} ${P(12, 22)} C${P(6, 20)} ${P(2, 22)} ${P(0, 22)} C${P(-2, 22)} ${P(-6, 20)} ${P(-12, 22)} Z" fill="${o.bigote}" stroke="${T}" stroke-width="${k(1.2)}"/>` : ''}
-    <path d="M${P(-6, 25)} Q${P(0, 23)} ${P(6, 25)}" stroke="${T}" stroke-width="${k(1.8)}" fill="none"/>
-    ${o.barba ? `<path d="M${P(-21, 6)} C${P(-20, 32)} ${P(-10, 46)} ${P(0, 50)} C${P(10, 46)} ${P(20, 32)} ${P(21, 6)} C${P(16, 22)} ${P(10, 26)} ${P(0, 27)} C${P(-10, 26)} ${P(-16, 22)} ${P(-21, 6)} Z" fill="${o.barba}" stroke="${T}" stroke-width="${k(1.8)}"/>
-      <path d="M${P(-12, 22)} C${P(-6, 15)} ${P(-2, 18)} ${P(0, 19)} C${P(2, 18)} ${P(6, 15)} ${P(12, 22)}" fill="none" stroke="${T}" stroke-width="${k(1.6)}"/>
-      <path d="M${P(-6, 25)} Q${P(0, 23)} ${P(6, 25)}" stroke="${C.rojoO}" stroke-width="${k(2)}" fill="none"/>` : ''}`;
+    <path d="M${x - r} ${y - 2} C${x - r} ${y - r * 1.35} ${x + r} ${y - r * 1.35} ${x + r} ${y - 2} C${x + r} ${y + r * 0.9} ${x + r * 0.3} ${y + r * 1.2} ${x - r * 0.15} ${y + r * 1.2} C${x - r * 0.7} ${y + r * 1.1} ${x - r} ${y + r * 0.6} ${x - r} ${y - 2} Z" fill="${C.piel}" ${tr(1.6)}/>
+    <path d="M${x - r * 0.55} ${y - r * 0.2} q${r * 0.2} -${r * 0.16} ${r * 0.4} 0 M${x + r * 0.15} ${y - r * 0.2} q${r * 0.2} -${r * 0.16} ${r * 0.4} 0" stroke="${T}" stroke-width="1.3" fill="none"/>
+    <circle cx="${x - r * 0.35}" cy="${y}" r="1.2" fill="${T}"/><circle cx="${x + r * 0.35}" cy="${y}" r="1.2" fill="${T}"/>
+    <path d="M${x - r * 0.05} ${y + r * 0.05} L${x - r * 0.18} ${y + r * 0.5} L${x + r * 0.08} ${y + r * 0.52}" stroke="${T}" stroke-width="1.1" fill="none"/>
+    ${o.barba ? `<path d="M${x - r * 0.95} ${y + r * 0.1} C${x - r} ${y + r * 1.6} ${x - r * 0.4} ${y + r * 2.4} ${x} ${y + r * 2.6} C${x + r * 0.4} ${y + r * 2.4} ${x + r} ${y + r * 1.6} ${x + r * 0.95} ${y + r * 0.1} C${x + r * 0.6} ${y + r * 0.8} ${x - r * 0.6} ${y + r * 0.8} ${x - r * 0.95} ${y + r * 0.1} Z" fill="${o.barba}" ${tr(1.3)}/>
+       <path d="M${x - r * 0.4} ${y + r * 0.95} Q${x} ${y + r * 0.75} ${x + r * 0.4} ${y + r * 0.95}" stroke="${T}" stroke-width="1.1" fill="none"/>
+       <path d="M${x - r * 0.5} ${y + r * 1.4} C${x - r * 0.4} ${y + r * 1.9} ${x - r * 0.2} ${y + r * 2.2} ${x} ${y + r * 2.4} M${x + r * 0.5} ${y + r * 1.4} C${x + r * 0.4} ${y + r * 1.9} ${x + r * 0.2} ${y + r * 2.2} ${x} ${y + r * 2.4}" stroke="${C.gris}" stroke-width="1" fill="none"/>`
+      : `<path d="M${x - r * 0.3} ${y + r * 0.78} Q${x} ${y + r * 0.88} ${x + r * 0.3} ${y + r * 0.78}" stroke="${C.rojoO}" stroke-width="1.3" fill="none"/>
+       <circle cx="${x - r * 0.55}" cy="${y + r * 0.45}" r="${r * 0.18}" fill="#ee9a86" opacity=".45"/><circle cx="${x + r * 0.55}" cy="${y + r * 0.45}" r="${r * 0.18}" fill="#ee9a86" opacity=".45"/>`}`;
 }
-function panel(palo) {
-  return `<rect x="15" y="15" width="170" height="266" rx="7" fill="url(#n-fondo-${palo})"/>
-    <rect x="20" y="20" width="160" height="256" rx="5" fill="none" stroke="${C.oro}" stroke-width="1.4" opacity=".55"/>`;
+function melena(x, y, r, color) {
+  return `<path d="M${x - r * 1.1} ${y + r * 0.9} C${x - r * 1.4} ${y - r * 0.4} ${x - r * 0.8} ${y - r * 1.2} ${x} ${y - r * 1.2} C${x + r * 0.8} ${y - r * 1.2} ${x + r * 1.4} ${y - r * 0.4} ${x + r * 1.1} ${y + r * 0.9} C${x + r * 0.9} ${y + r * 0.3} ${x + r * 0.9} ${y - r * 0.2} ${x + r * 0.7} ${y - r * 0.5} C${x + r * 0.2} ${y - r * 0.3} ${x - r * 0.2} ${y - r * 0.3} ${x - r * 0.7} ${y - r * 0.5} C${x - r * 0.9} ${y - r * 0.2} ${x - r * 0.9} ${y + r * 0.3} ${x - r * 1.1} ${y + r * 0.9} Z" fill="${color}" ${tr(1.4)}/>`;
 }
+function manoEn(x, y) { return `<circle cx="${x}" cy="${y}" r="5" fill="${C.piel}" ${tr(1.4)}/>`; }
 // Lo que sujeta cada figura
-function itemEn(palo, x, y, rol) {
-  if (palo === 'O') return usar('oro', x, y, rol === 'grande' ? 0.5 : 0.42);
-  if (palo === 'C') return usar('copa', x, y, rol === 'grande' ? 0.62 : 0.54);
-  if (palo === 'E') return usar('espada', x, y, 0.8, rol === 'hombro' ? -20 : rol === 'alto' ? 10 : 0);
-  return usar('basto', x, y, 0.8, rol === 'hombro' ? -24 : rol === 'alto' ? 12 : -4);
+function objeto(palo, x, y, s = 1, r = 0) {
+  if (palo === 'O') return usar('oro', x, y, 0.62 * s);
+  if (palo === 'C') return usar('copa', x, y, 0.72 * s, r);
+  if (palo === 'E') return usar('espada-larga', x, y, 0.62 * s, r);
+  return usar(r ? 'basto-v' : 'basto-v', x, y, 0.78 * s, r);
 }
-function mano(x, y, color) {
-  return `<path d="M${x - 7} ${y - 3} C${x - 8} ${y - 10} ${x + 6} ${y - 11} ${x + 8} ${y - 4} C${x + 9} ${y + 3} ${x + 2} ${y + 8} ${x - 4} ${y + 6} C${x - 8} ${y + 4} ${x - 8} ${y} ${x - 7} ${y - 3} Z" fill="${C.piel}" ${tr(2)}/>
-    <path d="M${x - 9} ${y + 8} L${x + 5} ${y + 12}" stroke="${color}" stroke-width="5" stroke-linecap="round"/>`;
-}
-// Torso: hombros anchos hasta el borde de abajo
-function torso(R, conRey) {
-  return `
-    <path d="M28 281 C28 236 48 206 82 196 L118 196 C152 206 172 236 172 281 Z" fill="${R.a}" ${tr(2.6)}/>
-    <path d="M82 196 L100 262 L118 196" fill="${R.b}" ${tr(2.2)}/>
-    ${conRey ? `<path d="M28 281 C28 236 48 206 82 196 L86 206 C62 218 48 246 48 281 Z M172 281 C172 236 152 206 118 196 L114 206 C138 218 152 246 152 281 Z" fill="url(#n-armino)" ${tr(2)}/>` : ''}
-    <path d="M60 236 Q100 252 140 236" stroke="${C.oro}" stroke-width="3.2" fill="none"/>
-    ${[214, 230, 246].map(y => `<circle cx="100" cy="${y}" r="3" fill="${C.oro}" stroke="${T}" stroke-width="1.2"/>`).join('')}`;
-}
-function gola(y) {
-  // El cuello de lechuguilla
-  let p = '';
-  for (let k = 0; k < 9; k++) { const x = 72 + k * 7; p += `<ellipse cx="${x}" cy="${y}" rx="5" ry="7" fill="${C.blanco}" stroke="${T}" stroke-width="1.4"/>`; }
-  return p;
-}
+
 function sota(palo) {
-  const R = ROPA[palo], largo = palo === 'E' || palo === 'B';
-  const item = largo ? itemEn(palo, 150, 150, 'alto') : itemEn(palo, 148, 168, 'grande');
-  const perra = palo === 'O';
-  return `${panel(palo)}
-    ${torso(R, false)}
-    ${gola(190)}
-    <path d="M78 98 C76 80 124 80 122 98 L124 120 C118 108 82 108 76 120 Z" fill="${R.pelo}" ${tr(2)}/>
-    ${cara3(100, 132, 1.12)}
-    <path d="M70 96 C70 76 130 72 132 92 L130 104 C110 96 90 96 70 104 Z" fill="${R.b}" ${tr(2.4)}/>
-    <path d="M68 102 Q100 92 132 102" stroke="${R.c}" stroke-width="5" fill="none"/>
-    <path d="M124 86 C142 64 152 50 146 36 C138 52 128 66 116 80 Z" fill="${R.c}" ${tr(1.8)}/>
-    ${item}
-    ${mano(largo ? 150 : 136, largo ? 194 : 196, R.a)}
-    ${perra ? medallon('perra') : ''}`;
-}
-function cabezaCaballo(pelaje, crin, sombra) {
-  // De perfil, mirando a la izquierda: orejas tiesas, ojo, hocico largo y la quijada redonda
+  const R = ROPA[palo];
+  // La pose depende de lo que lleva: el oro y la copa en alto; la espada y el basto, apoyados
+  const alto = palo === 'O' || palo === 'C';
+  const brazoD = alto ? 'M122 120 C134 112 140 98 142 84' : palo === 'E' ? 'M122 120 C130 132 132 146 128 158' : 'M122 120 C132 132 136 146 134 158';
+  const manoD = alto ? [142, 82] : palo === 'E' ? [128, 160] : [134, 160];
+  const item = palo === 'O' ? objeto('O', 144, 62, 1.05) : palo === 'C' ? objeto('C', 144, 64, 1) : palo === 'E' ? objeto('E', 128, 200, 0.98, 180) : objeto('B', 146, 110, 1.15, 14);
   return `
-    <path d="M78 80 C64 86 54 96 48 108 C40 124 30 142 24 156 C20 164 20 172 26 177 C30 181 38 181 43 177 C50 173 60 171 68 162 C76 150 80 136 78 124 C80 160 66 220 50 284 L114 284 C118 222 106 132 78 80 Z" fill="${pelaje}" ${tr(2.8)}/>
-    <path d="M76 126 C80 140 76 154 68 162 C62 168 54 172 46 175 C58 168 66 158 70 146 C72 138 74 132 76 126 Z" fill="${sombra}" opacity=".45"/>
-    <path d="M70 84 L62 54 L80 76 Z" fill="${pelaje}" ${tr(2.4)}/><path d="M68 78 L64 62 L74 74 Z" fill="${sombra}" opacity=".6"/>
-    <path d="M80 82 C96 104 110 150 114 200 C116 230 114 260 112 284 L124 284 C128 250 128 214 122 180 L132 186 L120 160 L126 162 L112 130 L118 130 L100 100 L104 98 L84 76 Z" fill="${crin}" ${tr(2)}/>
-    <path d="M72 84 C64 88 58 96 56 104 C62 100 66 98 70 98 C66 104 64 108 64 112 C70 104 76 96 78 88 Z" fill="${crin}" stroke="${T}" stroke-width="1.6"/>
-    <path d="M50 112 Q57 106 64 112 Q57 117 50 112 Z" fill="${C.blanco}" stroke="${T}" stroke-width="1.6"/><circle cx="57" cy="112" r="2.8" fill="${T}"/>
-    <path d="M48 106 Q57 100 66 106" stroke="${T}" stroke-width="2.4" fill="none"/>
-    <path d="M24 160 Q28 154 34 158" stroke="${T}" stroke-width="2.6" fill="none"/>
-    <path d="M23 172 C28 175 34 175 40 172" stroke="${T}" stroke-width="2" fill="none"/>
-    <path d="M30 146 C38 152 50 154 62 150 M74 92 C70 112 66 132 62 150 M66 90 L82 96" stroke="${C.rojoO}" stroke-width="3.6" fill="none"/>
-    <path d="M42 172 C64 184 92 196 112 214" stroke="${C.rojoO}" stroke-width="3" fill="none"/>
-    <circle cx="62" cy="150" r="4" fill="${C.oro}" stroke="${T}" stroke-width="1.4"/><circle cx="42" cy="172" r="3.4" fill="${C.oro}" stroke="${T}" stroke-width="1.4"/>`;
+    ${palo === 'E' ? item : ''}
+    <path d="M78 116 C64 140 58 180 62 214 L74 214 C72 186 76 150 86 126 Z" fill="${R.capa}" ${tr(1.6)}/>
+    <ellipse cx="88" cy="268" rx="11" ry="5" fill="${C.negro}"/><ellipse cx="114" cy="268" rx="11" ry="5" fill="${C.negro}"/>
+    ${palo2('M92 196 L88 262', R.calza1, 11)}${palo2('M108 196 L112 262', R.calza2, 11)}
+    <path d="M74 160 L126 160 L134 204 Q100 212 66 204 Z" fill="${R.falda}" ${tr(1.6)}/>
+    <path d="M68 198 Q100 206 132 198" stroke="${C.am === R.falda ? C.rojo : C.am}" stroke-width="3" fill="none"/>
+    <path d="M80 158 L86 204 M100 160 V208 M120 158 L114 204" stroke="${T}" stroke-width="1" opacity=".5"/>
+    <path d="M78 114 Q100 106 122 114 L126 162 L74 162 Z" fill="${R.jubon}" ${tr(1.6)}/>
+    <path d="M74 156 H126" stroke="${C.am}" stroke-width="5"/><rect x="96" y="152" width="8" height="8" fill="${C.amO}" ${tr(1)}/>
+    ${[124, 134, 144].map(y => `<circle cx="100" cy="${y}" r="2" fill="${C.am}" ${tr(.8)}/>`).join('')}
+    ${palo2('M80 118 C70 132 68 148 72 160', R.manga, 10)}${manoEn(72, 163)}
+    ${palo === 'E' ? '' : item}
+    ${palo2(brazoD, R.manga, 10)}${manoEn(manoD[0], manoD[1])}
+    <path d="M88 112 Q100 120 112 112 Q112 104 100 104 Q88 104 88 112 Z" fill="${C.blanco}" ${tr(1.3)}/>
+    ${melena(100, 88, 13, C.pelo)}
+    ${cara(100, 88, 13)}
+    <path d="M82 78 C82 62 118 60 120 74 L122 80 C108 74 92 74 80 82 Z" fill="${R.gorro}" ${tr(1.6)}/>
+    <path d="M80 80 Q100 70 122 78" stroke="${C.am}" stroke-width="3" fill="none"/>
+    <path d="M114 68 C126 54 132 44 128 34 C122 46 116 56 108 64 Z" fill="${R.pluma}" ${tr(1.3)}/>`;
 }
-function caballo(palo) {
-  const R = ROPA[palo], perro = palo === 'B';
-  const pelaje = palo === 'O' ? '#e6dccb' : palo === 'C' ? '#8f5a2e' : palo === 'E' ? '#b9b2a6' : '#3a2518';
-  const sombra = palo === 'O' ? '#a89c88' : palo === 'C' ? '#4e2c12' : palo === 'E' ? '#77706a' : '#140c07';
-  const crin = palo === 'O' || palo === 'E' ? '#5e574e' : '#120b06';
-  const item = palo === 'E' ? usar('espada', 172, 162, 0.72, 4) : palo === 'B' ? itemEn('B', 160, 120, 'hombro')
-    : palo === 'O' ? itemEn('O', 154, 238, 'grande') : itemEn('C', 154, 230, 'grande');
-  const manoXY = palo === 'E' ? [172, 222] : palo === 'B' ? [158, 196] : [142, 262];
-  return `${panel(palo)}
-    <path d="M86 284 C88 244 98 218 118 210 L146 210 C166 218 178 244 180 284 Z" fill="${R.a}" ${tr(2.6)}/>
-    <path d="M118 210 L132 264 L146 210" fill="${R.b}" ${tr(2.2)}/>
-    <path d="M100 248 Q132 262 174 248" stroke="${C.oro}" stroke-width="3.2" fill="none"/>
-    <path d="M118 206 Q132 214 146 206 L144 196 Q132 202 120 196 Z" fill="${C.blanco}" ${tr(1.6)}/>
-    ${cara3(136, 158, 1, { bigote: R.pelo })}
-    <path d="M110 126 C110 100 162 100 162 126 Z" fill="${R.c}" ${tr(2.4)}/>
-    <ellipse cx="136" cy="126" rx="38" ry="8" fill="${R.c}" ${tr(2.4)}/>
-    <path d="M150 112 C166 96 176 82 172 68 C162 84 154 96 144 106 Z" fill="${R.b}" ${tr(1.8)}/>
-    <g transform="translate(4 34) scale(.86)">${cabezaCaballo(pelaje, crin, sombra)}</g>
-    ${item}
-    ${mano(manoXY[0], manoXY[1], R.a)}
-    ${perro ? medallon('perro') : ''}`;
-}
-// El perro o la perra, en un medallón abajo a la izquierda
-function medallon(cual) {
-  return `<circle cx="50" cy="240" r="33" fill="${cual === 'perro' ? PALO.B.fondo : PALO.O.fondo}" stroke="${C.oro}" stroke-width="3"/>
-    <circle cx="50" cy="240" r="28" fill="none" stroke="${C.oro}" stroke-width="1" opacity=".6"/>
-    ${usar(cual, 50, cual === 'perro' ? 236 : 238, cual === 'perro' ? 0.68 : 0.66)}`;
-}
+
 function rey(palo) {
   const R = ROPA[palo];
-  const barba = palo === 'O' ? '#5a3418' : palo === 'C' ? '#d9d3c6' : palo === 'E' ? '#2a1d14' : '#a39a8c';
-  const largo = palo === 'E' || palo === 'B';
-  const item = largo ? itemEn(palo, 160, 150, 'alto') : itemEn(palo, 150, 172, 'grande');
-  return `${panel(palo)}
-    ${torso(R, true)}
-    <path d="M74 196 Q100 210 126 196 L122 186 Q100 196 78 186 Z" fill="url(#n-armino)" ${tr(1.6)}/>
-    <path d="M76 100 C72 120 74 150 80 168 L120 168 C126 150 128 120 124 100 Z" fill="${R.pelo}" ${tr(2)}/>
-    ${cara3(100, 134, 1.1, { barba, bigote: barba })}
-    <path d="M70 104 L66 62 L82 82 L92 54 L100 76 L108 54 L118 82 L134 62 L130 104 Z" fill="url(#n-g-oro)" ${tr(2.6)}/>
-    <path d="M70 104 L130 104 L130 94 L70 94 Z" fill="${C.oroO}" ${tr(2)}/>
-    <circle cx="86" cy="99" r="3" fill="${C.rojo}"/><circle cx="100" cy="99" r="3" fill="${C.azul}"/><circle cx="114" cy="99" r="3" fill="${C.rojo}"/>
-    <circle cx="66" cy="60" r="3.6" fill="${C.oroC}" stroke="${T}" stroke-width="1.4"/><circle cx="92" cy="52" r="3.6" fill="${C.oroC}" stroke="${T}" stroke-width="1.4"/><circle cx="108" cy="52" r="3.6" fill="${C.oroC}" stroke="${T}" stroke-width="1.4"/><circle cx="134" cy="60" r="3.6" fill="${C.oroC}" stroke="${T}" stroke-width="1.4"/>
+  const alto = palo === 'O' || palo === 'C';
+  const item = palo === 'O' ? objeto('O', 62, 104, 1.05) : palo === 'C' ? objeto('C', 60, 104, 1) : palo === 'E' ? objeto('E', 58, 112, 1.05) : objeto('B', 58, 112, 1.1, -10);
+  const manoI = alto ? [62, 128] : [58, 158];
+  return `
+    <path d="M70 112 C46 150 38 220 44 276 L76 276 C70 220 74 160 88 120 Z" fill="${R.capa}" ${tr(1.6)}/>
+    <path d="M130 112 C154 150 162 220 156 276 L124 276 C130 220 126 160 112 120 Z" fill="${R.capa}" ${tr(1.6)}/>
+    <path d="M78 116 C70 160 64 220 62 276 L138 276 C136 220 130 160 122 116 Z" fill="url(#n-brocado)" ${tr(1.6)}/>
+    <rect x="94" y="120" width="12" height="156" fill="url(#n-armino)" ${tr(1.2)}/>
+    <path d="M62 266 L138 266 L138 276 L62 276 Z" fill="url(#n-armino)" ${tr(1.2)}/>
+    <ellipse cx="86" cy="279" rx="9" ry="4" fill="${C.negro}"/><ellipse cx="114" cy="279" rx="9" ry="4" fill="${C.negro}"/>
+    <path d="M72 150 H128" stroke="${C.am}" stroke-width="5"/>
     ${item}
-    ${mano(largo ? 160 : 138, largo ? 196 : 200, R.a)}`;
+    ${palo2(`M80 120 C68 128 ${manoI[0] + 2} ${manoI[1] - 16} ${manoI[0]} ${manoI[1]}`, R.capa, 11)}${manoEn(manoI[0], manoI[1])}
+    ${palo2('M120 120 C132 134 132 150 124 164', R.capa, 11)}${manoEn(122, 166)}
+    <path d="M70 118 Q100 136 130 118 Q126 106 100 106 Q74 106 70 118 Z" fill="url(#n-armino)" ${tr(1.4)}/>
+    ${melena(100, 86, 14, C.barba)}
+    ${cara(100, 86, 14, { barba: C.barba })}
+    <path d="M84 74 L82 52 L91 62 L96 46 L100 58 L104 46 L109 62 L118 52 L116 74 Z" fill="${C.am}" ${tr(1.6)}/>
+    <path d="M84 74 H116 V68 H84 Z" fill="${C.amO}" ${tr(1.2)}/>
+    <circle cx="92" cy="71" r="1.8" fill="${C.rojo}"/><circle cx="100" cy="71" r="1.8" fill="${C.azul}"/><circle cx="108" cy="71" r="1.8" fill="${C.rojo}"/>
+    <circle cx="82" cy="51" r="2.2" fill="${C.am}" ${tr(1)}/><circle cx="96" cy="45" r="2.2" fill="${C.am}" ${tr(1)}/><circle cx="104" cy="45" r="2.2" fill="${C.am}" ${tr(1)}/><circle cx="118" cy="51" r="2.2" fill="${C.am}" ${tr(1)}/>`;
+}
+
+function caballo(palo) {
+  const R = ROPA[palo];
+  const pelaje = palo === 'O' || palo === 'E' ? '#ede6da' : '#c98a4a';
+  const sombra = palo === 'O' || palo === 'E' ? '#bdb3a2' : '#8e5a2a';
+  const crin = palo === 'O' || palo === 'E' ? '#cfc6b6' : '#5a3418';
+  const pata = (d) => palo2(d, pelaje, 9);
+  const casco = (x, y) => `<path d="M${x - 6} ${y} h12 l-1 5 h-10 Z" fill="${C.negro}"/>`;
+  const item = palo === 'O' ? objeto('O', 148, 52, 1) : palo === 'C' ? objeto('C', 150, 52, 0.95) : palo === 'E' ? objeto('E', 146, 76, 0.95, 18) : objeto('B', 146, 72, 1.05, 22);
+  return `
+    <!-- patas de atrás -->
+    ${pata('M60 196 C56 214 50 230 46 252')}${casco(46, 254)}
+    ${pata('M72 200 C74 220 70 236 70 258')}${casco(70, 260)}
+    <!-- cola -->
+    <path d="M42 170 C26 182 24 214 32 238 C36 220 40 204 48 188 Z" fill="${crin}" ${tr(1.6)}/>
+    <!-- patas de delante: una levantada -->
+    ${pata('M134 200 C132 222 134 238 132 260')}${casco(132, 262)}
+    ${pata('M146 196 C156 210 162 216 170 214')}<path d="M168 208 l8 2 l-2 8 l-7 -2 Z" fill="${C.negro}"/>
+    <!-- cuerpo -->
+    <path d="M44 172 C44 150 70 144 100 146 C126 148 150 146 158 160 C164 176 156 200 140 204 C120 210 80 210 62 204 C48 200 44 188 44 172 Z" fill="${pelaje}" ${tr(1.8)}/>
+    <path d="M60 200 C80 206 120 206 140 200 C126 196 80 196 60 200 Z" fill="${sombra}" opacity=".5"/>
+    <!-- cuello y cabeza, mirando a la derecha -->
+    <path d="M136 158 C140 136 146 116 152 104 C156 96 162 92 168 94 C176 98 182 110 186 120 C188 126 184 130 178 128 L170 124 C164 132 160 146 158 166 Z" fill="${pelaje}" ${tr(1.8)}/>
+    <path d="M150 104 L148 90 L158 98 Z" fill="${pelaje}" ${tr(1.4)}/>
+    <path d="M150 106 C144 120 138 140 136 160 L130 154 C134 136 140 118 146 104 Z" fill="${crin}" ${tr(1.3)}/>
+    <circle cx="166" cy="104" r="1.8" fill="${T}"/><path d="M182 120 q-3 2 -4 0" stroke="${T}" stroke-width="1.2" fill="none"/>
+    <path d="M160 100 L170 124 M156 108 L178 112" stroke="${C.rojo}" stroke-width="2.6" fill="none"/>
+    <path d="M172 118 C160 130 140 140 126 146" stroke="${C.rojoO}" stroke-width="2" fill="none"/>
+    <!-- gualdrapa con flecos -->
+    <path d="M70 150 L134 150 C138 168 138 184 134 196 L72 196 C66 182 66 166 70 150 Z" fill="${C.rojo}" ${tr(1.6)}/>
+    <path d="M72 196 L134 196" stroke="${C.am}" stroke-width="5"/>
+    ${[76, 84, 92, 100, 108, 116, 124, 132].map(x => `<path d="M${x} 198 v8" stroke="${C.am}" stroke-width="2.4"/>`).join('')}
+    <path d="M78 156 h52" stroke="${C.am}" stroke-width="2.4"/>
+    <!-- el jinete -->
+    ${palo2('M98 168 C104 184 110 196 112 212', R.calza1, 10)}<path d="M106 214 h12 l-2 5 h-11 Z" fill="${C.negro}"/>
+    <path d="M84 118 Q100 110 116 118 L120 160 Q100 166 80 160 Z" fill="${R.jubon}" ${tr(1.6)}/>
+    <path d="M80 160 Q100 168 120 160 L124 176 Q100 184 76 176 Z" fill="${R.falda}" ${tr(1.4)}/>
+    <path d="M82 154 H118" stroke="${C.am}" stroke-width="4"/>
+    ${palo2('M86 122 C78 134 84 146 96 148', R.manga, 9)}${manoEn(98, 148)}
+    ${item}
+    ${palo2('M114 122 C126 116 134 100 ' + (palo === 'E' || palo === 'B' ? '140 92' : '144 72'), R.manga, 9)}${manoEn(palo === 'E' || palo === 'B' ? 140 : 144, palo === 'E' || palo === 'B' ? 90 : 70)}
+    <path d="M90 116 Q100 122 110 116 Q110 108 100 108 Q90 108 90 116 Z" fill="${C.blanco}" ${tr(1.2)}/>
+    ${melena(100, 94, 12, C.pelo)}
+    ${cara(100, 94, 12)}
+    <path d="M84 86 C84 70 116 68 118 82 L120 86 C108 80 94 80 82 88 Z" fill="${R.gorro}" ${tr(1.6)}/>
+    <path d="M112 76 C124 62 130 52 126 42 C120 54 114 64 106 72 Z" fill="${R.pluma}" ${tr(1.3)}/>`;
 }
 
 // ---------------------------------------------------------------- Una carta entera
 function marco(palo) {
-  // El marco del color del palo, con su pinta: cortes arriba y abajo
-  const cortes = { O: [], C: [100], E: [74, 126], B: [60, 100, 140] }[palo];
+  // La pinta: cortes en las líneas de arriba y de abajo según el palo
+  const cortes = { O: [], C: [100], E: [74, 126], B: [62, 100, 138] }[palo];
   const linea = y => {
-    let x0 = 22, s = '';
-    for (const c of cortes) { s += `M${x0} ${y} H${c - 8} `; x0 = c + 8; }
-    return s + `M${x0} ${y} H178`;
+    let x0 = 16, s = '';
+    for (const c of cortes) { s += `M${x0} ${y} H${c - 10} `; x0 = c + 10; }
+    return s + `M${x0} ${y} H184`;
   };
-  const col = PALO[palo].c;
-  return `<path d="${linea(12)} ${linea(284)}" stroke="${col}" stroke-width="5" fill="none" stroke-linecap="butt"/>
-    <path d="M12 22 V274 M188 22 V274" stroke="${col}" stroke-width="5" fill="none"/>
-    <path d="M12 22 Q12 12 22 12 M178 12 Q188 12 188 22 M12 274 Q12 284 22 284 M178 284 Q188 284 188 274" stroke="${col}" stroke-width="5" fill="none"/>`;
+  return `<path d="${linea(14)} ${linea(282)} M16 14 V282 M184 14 V282" stroke="${T}" stroke-width="1.8" fill="none"/>`;
 }
-function indice(rank, palo, figura) {
-  // Número grande del color del palo, con su pinta debajo, arriba a la izquierda (es lo que se ve en la mano)
-  const t = String(rank), col = PALO[palo].c, dos = t.length > 1, ancho = dos ? 60 : 40, largo = palo === 'E' || palo === 'B';
-  const pinta = { O: ['oro', 0.25], C: ['copa', 0.3], E: ['espada', 0.2], B: ['basto', 0.2] }[palo];
-  const cx = 10 + ancho / 2, alto = largo ? 112 : 100;
-  const letra = `font-family="Alegreya SC, Georgia, 'Times New Roman', serif" font-weight="800"`;
-  return `
-    ${figura ? `<rect x="5" y="5" width="${ancho + 10}" height="${alto}" rx="9" fill="${PAPEL}" stroke="${col}" stroke-width="3"/>` : ''}
-    <text x="${cx}" y="62" text-anchor="middle" ${letra} font-size="${dos ? 54 : 66}" letter-spacing="${dos ? -4 : 0}" fill="${col}" stroke="${PAPEL}" stroke-width="7" stroke-linejoin="round" paint-order="stroke">${t}</text>
-    ${usar(pinta[0], cx, largo ? 90 : 82, pinta[1])}
-    ${figura ? '' : `<text x="182" y="276" text-anchor="end" ${letra} font-size="34" letter-spacing="${dos ? -2 : 0}" fill="${col}">${t}</text>`}`;
+function indice(rank) {
+  // El número en las dos esquinas, como siempre (el de abajo, del revés)
+  const t = String(rank), dos = t.length > 1;
+  const uno = `<rect x="3" y="3" width="${dos ? 46 : 32}" height="46" fill="${BLANCO}"/>
+    <text x="${dos ? 26 : 19}" y="43" text-anchor="middle" font-family="Alegreya SC, Georgia, 'Times New Roman', serif" font-weight="700" font-size="${dos ? 40 : 46}" letter-spacing="${dos ? -3 : 0}" fill="${T}">${t}</text>`;
+  return `<g>${uno}</g><g transform="rotate(180 100 148)">${uno}</g>`;
 }
-// Las bravas llevan su marca, para reconocerlas antes: el perro y la perra, su perro; las otras, una estrella
-function marca(rank, palo) {
-  const id = rank + palo;
-  const bravas = { '1E': 1, '1B': 1, '7E': 1, '7O': 1 };
-  if (!bravas[id]) return '';
-  const col = PALO[palo].c;
-  let e = '';
-  for (let k = 0; k < 10; k++) { const a = k * Math.PI / 5 - Math.PI / 2, r = k % 2 ? 5.6 : 13; e += `${k ? 'L' : 'M'}${n1(168 + r * Math.cos(a))} ${n1(32 + r * Math.sin(a))} `; }
-  return `<circle cx="168" cy="33" r="16" fill="${PAPEL}"/><path d="${e}Z" fill="${col}" stroke="${T}" stroke-width="1.4"/>`;
-}
-function cara(rank, palo) {
+function cartaCara(rank, palo) {
   let dibujo;
-  const nombre = { O: 'oro', C: 'copa', E: 'espada', B: 'basto' }[palo];
   if (rank === 1) dibujo = { O: asOros, C: asCopas, E: asEspadas, B: asBastos }[palo]();
   else if (rank <= 7) {
-    if (palo === 'O' || palo === 'C') dibujo = REDONDAS[rank].map(([x, y]) => usar(nombre, x, y, (palo === 'O' ? TAM_RED : TAM_COPA)[rank])).join('');
-    else {
-      const s = rank <= 3 ? 0.8 : 0.72, fino = palo === 'B' && rank >= 4 ? ' scale(.86 1)' : '';
-      dibujo = largas(rank).map(([x, y, r]) => usar(nombre, x, y, s, r, fino)).join('');
-    }
-  } else dibujo = rank === 10 ? sota(palo) : rank === 11 ? caballo(palo) : rey(palo);
-  const figura = rank >= 10;
-  return `<rect width="${W}" height="${H}" fill="url(#n-grano)"/><rect width="${W}" height="${H}" fill="url(#n-papel)"/>
-    ${figura ? '' : marco(palo)}${dibujo}${figura ? marco(palo) : ''}${marca(rank, palo)}${indice(rank, palo, figura)}`;
+    if (palo === 'O') dibujo = REDONDAS[rank].map(([x, y]) => usar('oro', x, y, TAM_ORO[rank])).join('');
+    else if (palo === 'C') dibujo = REDONDAS[rank].map(([x, y]) => usar('copa', x, y, TAM_COPA[rank])).join('');
+    else if (palo === 'E') dibujo = espadas(rank);
+    else dibujo = bastos(rank);
+  } else dibujo = `<g transform="translate(100 156) scale(1.1) translate(-100 -156)">${rank === 10 ? sota(palo) : rank === 11 ? caballo(palo) : rey(palo)}</g>`;
+  return `<rect width="${W}" height="${H}" fill="${BLANCO}"/>${marco(palo)}${dibujo}${indice(rank)}`;
 }
 function dorso() {
-  return `<rect width="${W}" height="${H}" fill="${PAPEL}"/>
-    <rect x="9" y="9" width="182" height="278" rx="9" fill="url(#n-trama)" stroke="#3a0a0e" stroke-width="2.4"/>
-    <rect x="17" y="17" width="166" height="262" rx="6" fill="none" stroke="#d6a84a" stroke-width="2.4"/>
-    <rect x="22" y="22" width="156" height="252" rx="4" fill="none" stroke="#d6a84a" stroke-width="1" opacity=".7"/>
-    <ellipse cx="100" cy="148" rx="54" ry="70" fill="#3a0a0e" stroke="#d6a84a" stroke-width="4"/>
-    <ellipse cx="100" cy="148" rx="45" ry="61" fill="${PAPEL}" stroke="#5b1218" stroke-width="2"/>
-    <text x="100" y="166" text-anchor="middle" font-family="Alegreya SC, Georgia, serif" font-weight="800" font-size="50" fill="#5b1218" letter-spacing="-4">JJ</text>
-    <path d="M70 112 Q100 100 130 112 M70 184 Q100 196 130 184" stroke="#b8862a" stroke-width="2.4" fill="none"/>
-    ${usar('oro', 100, 100, 0.16)}${usar('copa', 100, 198, 0.17)}`;
+  return `<rect width="${W}" height="${H}" fill="${BLANCO}"/>
+    <rect x="10" y="10" width="180" height="276" rx="8" fill="url(#n-trama)" stroke="#7a1218" stroke-width="2"/>
+    <rect x="17" y="17" width="166" height="262" rx="5" fill="none" stroke="#f3e3c0" stroke-width="2.4"/>
+    <ellipse cx="100" cy="148" rx="52" ry="68" fill="#7a1218" stroke="#f3e3c0" stroke-width="3.4"/>
+    <ellipse cx="100" cy="148" rx="44" ry="60" fill="${BLANCO}" stroke="#7a1218" stroke-width="2"/>
+    <text x="100" y="166" text-anchor="middle" font-family="Alegreya SC, Georgia, serif" font-weight="800" font-size="50" fill="#b3202a" letter-spacing="-4">JJ</text>
+    <path d="M70 112 Q100 100 130 112 M70 184 Q100 196 130 184" stroke="${C.amO}" stroke-width="2.4" fill="none"/>`;
 }
 
 // Mete todos los dibujos, una sola vez, en el <defs> del documento
@@ -371,7 +348,7 @@ function montar(doc = root.document) {
   if (!doc || doc.getElementById('n-dorso')) return;
   const ids = [];
   for (const p of 'OCEB') for (const r of [1, 2, 3, 4, 5, 6, 7, 10, 11, 12]) ids.push([r, p]);
-  const simbolos = ids.map(([r, p]) => `<symbol id="n-${r}${p}" viewBox="0 0 ${W} ${H}">${cara(r, p)}</symbol>`).join('') +
+  const simbolos = ids.map(([r, p]) => `<symbol id="n-${r}${p}" viewBox="0 0 ${W} ${H}">${cartaCara(r, p)}</symbol>`).join('') +
     `<symbol id="n-dorso" viewBox="0 0 ${W} ${H}">${dorso()}</symbol>`;
   const svg = doc.createElementNS('http://www.w3.org/2000/svg', 'svg');
   svg.setAttribute('width', '0'); svg.setAttribute('height', '0'); svg.setAttribute('aria-hidden', 'true');
@@ -384,5 +361,5 @@ function html(id) {
   return `<svg class="cara" viewBox="0 0 ${W} ${H}" aria-hidden="true"><use href="#n-${id}"/></svg><svg class="dorso" viewBox="0 0 ${W} ${H}" aria-hidden="true"><use href="#n-dorso"/></svg>`;
 }
 
-root.PerroNaipes = { montar, html, cara, dorso, defs, PALOS, W, H };
+root.PerroNaipes = { montar, html, cara: cartaCara, dorso, defs, PALOS, W, H };
 })(typeof window !== 'undefined' ? window : globalThis);
