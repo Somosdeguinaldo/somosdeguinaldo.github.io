@@ -2,7 +2,7 @@
 (function () {
 'use strict';
 const P = window.Perro, AI = window.PerroAI, A = window.PerroArte;
-const SON = window.PerroSonido || { desbloquear() {}, ajustar() {}, click() {}, posavaso() {}, cartaSale() {}, cartaMesa() {}, recoger() {}, canto() {}, fin() {}, puerta() {}, enBar() {}, mesazo() {} };
+const SON = window.PerroSonido || { desbloquear() {}, ajustar() {}, click() {}, posavaso() {}, cartaSale() {}, cartaMesa() {}, recoger() {}, canto() {}, fin() {}, puerta() {}, enBar() {}, mesazo() {}, nudillos() {} };
 let HUMAN = 0;            // tu sitio en la mesa (en la mesa con amigos puede ser otro: la mesa se gira para que estés abajo)
 const $ = s => document.querySelector(s);
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -166,9 +166,46 @@ function step() {
   S.timer = setTimeout(() => {
     if (S.game !== g || S.animating || flying() || pausado()) return;
     if (S.tuto && S.tuto.bloquea()) return;
-    aplicar(S.tuto ? S.tuto.decide(g) : AI.decide(g));
-    step();
+    const a = S.tuto ? S.tuto.decide(g) : AI.decide(g);
+    // Si va a cantar, primero se le ve venir (y no salta el cartel de golpe)
+    avisarCanto(S.tuto ? null : cantoDe(a), () => {
+      if (S.game !== g) return;
+      if (g.pending !== p || pausado()) { step(); return; }
+      aplicar(a);
+      step();
+    });
   }, wait);
+}
+// ---------- Antes de que otro cante (envido, truque, flor, «y yo»...): carraspea, da con los nudillos en la
+// mesa y se le mueve la mano. Así el cartel no te pilla de sorpresa.
+const CANTOS = ['envido', 'truque', 'envidoTruque', 'subir', 'flor'];
+const SUBIDAS = ['raise', 'falta', 'envidar'];
+const CARRASPEOS = ['Ejem…', 'A ver, a ver…', 'Pues mira…', 'Mmm…', 'Atento…', 'Espera, espera…'];
+const avisoMs = () => (S.speed === 'rapida' ? 600 : 1000);
+function cantoDe(a) {
+  if (!a) return null;
+  if (CANTOS.includes(a.type)) return a.seat;
+  const r = a.type === 'respond' ? a.responses : a.type === 'florDecide' ? a.decisions : null;
+  if (!r) return null;
+  const suben = Object.keys(r).map(Number).filter(s => r[s] && SUBIDAS.includes(r[s].kind));
+  return suben.length && !suben.includes(HUMAN) ? suben[0] : null;
+}
+function avisarCanto(seat, seguir) {
+  const g = S.game;
+  if (seat == null || seat === HUMAN || !g || !g.players[seat]) { seguir(); return; }
+  S.animating = true;
+  S.aviso = { seat, texto: CARRASPEOS[Math.floor(Math.random() * CARRASPEOS.length)] };
+  const contra = humanPlays() && g.teamOf(seat) !== g.humanTeam();
+  SON.nudillos(contra ? 1 : 0.6);
+  render();
+  clearTimeout(S.avisoTimer);
+  S.avisoTimer = setTimeout(() => {
+    S.avisoTimer = null;
+    if (S.game !== g) return;
+    S.aviso = null;
+    S.animating = false;
+    seguir();
+  }, avisoMs());
 }
 // Toda jugada pasa por aquí; si llevas la mesa con amigos, además se la mandas a los demás (con lo que no pueden
 // calcular porque no ven las cartas) y, si empieza otra jugada, a cada uno sus cartas
@@ -215,7 +252,9 @@ function resetTable() {
   cerrarLupa(true);
   clearTimeout(S.timer);
   clearTimeout(S.bannerTimer);
+  clearTimeout(S.avisoTimer);
   Object.assign(S, {
+    aviso: null, avisoTimer: null,
     piles: {}, pilesReparto: 0, discardedFor: null, animating: false, recogiendo: false,
     lastAnnounced: 0, bannerQueue: [], bannerUntil: 0, bannerTimer: null, bannerFin: 0, platoN: -1, cigKey: '', pizarraKey: '', pizarraPrev: null, apuestasHTML: null, jugadasKey: '',
     vistas: new Set(), cola: [], volando: false, desde: {}, jRef: null, jSeq: 0, fuera: new Set(),
@@ -529,7 +568,7 @@ function bannerContent(e) {
     case 'noquiero': return { big: 'No quiero', sub: `${me ? 'No quieres' : name + ' no quiere'}. ${g.teamVerb(e.toTeam, 'cobra', 'cobras', 'cobramos', 'cobran', true)} ${ch(e.pts)}.`, cls: 'k-no' };
     case 'florEnvidar': return { big: '¡Envido la flor!', sub: me ? 'Envidas tu flor' : `${name} envida su flor`, cls: 'k-flor', shake: rival };
     case 'florPasar': return { big: 'Paso la flor', sub: me ? 'Pasas tu flor' : `${name} pasa su flor`, cls: 'k-no' };
-    case 'mazo': return { big: 'Al mazo', sub: me ? 'Te vas al mazo' : `${name} se va al mazo`, cls: 'k-no' };
+    case 'mazo': return { big: me ? 'Te retiras' : 'Se retira', sub: me ? `Le dejas la jugada ${four ? 'a los rivales' : 'al rival'}` : `${name} se retira de la jugada`, cls: 'k-no' };
     default: return null;
   }
 }
@@ -745,10 +784,11 @@ function renderEtiquetas() {
     if (g.dealer === s) tags.push(`<span class="tag reparte" title="Reparte las cartas en este reparto">${ICONO_BARAJA}reparte</span>`);
     if (!part) tags.push('<span class="tag">mira</span>');
     if (enRed() && S.red.bots.has(s) && !S.red.config.asientos[s].bot) tags.push('<span class="tag fuera-red">se ha ido</span>');
-    const b = lastBubble(s);
-    const bubble = b && !gone ? `<span class="globo${b.kind === 'flor' ? ' flor' : ''}">${esc(b.bubble)}</span>` : '';
+    const b = lastBubble(s), avisa = S.aviso && S.aviso.seat === s;
+    const bubble = avisa ? `<span class="globo aviso-canto">${esc(S.aviso.texto)}</span>`
+      : b && !gone ? `<span class="globo${b.kind === 'flor' ? ' flor' : ''}">${esc(b.bubble)}</span>` : '';
     // Las etiquetas (le toca, mano, reparte), debajo del nombre; la tuya, en una sola línea
-    html += `<div class="etiqueta al-${E.al}${part ? '' : ' fuera'}" data-lado="${lado}" style="left:${E.x}px;top:${E.y}px"><div class="seat-head"><span class="dot ${teamClass(g.teamOf(s))}"></span><b>${esc(pl.name)}</b></div>${tags.length ? `<div class="tags">${tags.join('')}</div>` : ''}${bubble}</div>`;
+    html += `<div class="etiqueta al-${E.al}${part ? '' : ' fuera'}${avisa ? ' avisa' : ''}" data-lado="${lado}" style="left:${E.x}px;top:${E.y}px"><div class="seat-head"><span class="dot ${teamClass(g.teamOf(s))}"></span><b>${esc(pl.name)}</b></div>${tags.length ? `<div class="tags">${tags.join('')}</div>` : ''}${bubble}</div>`;
   }
   $('#etiquetas').innerHTML = html;
 }
@@ -815,7 +855,7 @@ function renderRivales() {
     const angs = ids.length === 1 ? [0] : ids.length === 2 ? [-12, 12] : [-22, 0, 22];
     const cards = ids.map((id, i) => cardHTML(id, 'rival chica', verRivales() ? '' : 'back', `transform:rotate(${angs[i]}deg)`)).join('');
     const label = ids.length ? `${ids.length} ${ids.length === 1 ? 'carta' : 'cartas'} en la mano de ${esc(pl.name)}` : `Las manos de ${esc(pl.name)}`;
-    html += `<div class="abanico-rival${S.fuera.has(s) ? ' echando' : ''}" data-seat="${s}" style="left:${bx.toFixed(1)}px;top:${by.toFixed(1)}px;transform:rotate(${A.LADOS[lado].phi}deg)" role="img" aria-label="${label}">${cards}${A.manoSujeta(A.gente(pl.name))}</div>`;
+    html += `<div class="abanico-rival${S.fuera.has(s) ? ' echando' : ''}${S.aviso && S.aviso.seat === s ? ' avisa' : ''}" data-seat="${s}" style="left:${bx.toFixed(1)}px;top:${by.toFixed(1)}px;transform:rotate(${A.LADOS[lado].phi}deg)" role="img" aria-label="${label}">${cards}${A.manoSujeta(A.gente(pl.name))}</div>`;
   }
   $('#rivales').innerHTML = html;
 }
@@ -891,7 +931,7 @@ function renderAcciones() {
         if (S.subiendo && S.subiendo.key === key) reto = selectorSubida('Subes el truque', p.subirAmount, p.subirMax);
         if (p.canFaltaSubir) coasters += pv('pv-falta', 'data-act="subirFalta"', 'La<br>falta', `${p.faltaAmount} chinas`, 5);
       }
-      if (p.canMazo) coasters += pv('pv-mazo', 'data-act="mazo"', 'Al mazo', '', 6, true);
+      if (p.canMazo) coasters += pv('pv-mazo', 'data-act="mazo"', 'Retirarse', '', 6, true);
     }
   } else if (!busy && p.type === 'respond' && p.seats.includes(HUMAN)) {
     const key = `${p.bet}-${p.amount}-${p.count}`;
@@ -1081,9 +1121,14 @@ function closeSheet() {
 function summaryHTML(s) {
   const g = S.game;
   let reason;
-  if (s.reason === 'mazo') reason = `${g.verb(s.mazo.seat, 'se fue', 'te fuiste')} al mazo.`;
+  if (s.reason === 'mazo') reason = `${g.verb(s.mazo.seat, 'se retiró', 'te retiraste')} de la jugada.`;
   else if (s.reason === 'truque') reason = 'No se quiso el truque: la jugada acaba aquí.';
-  else reason = `${cap(g.winsText(s.bazaWinner, true))} las bazas.`;
+  else {
+    reason = `${cap(g.winsText(s.bazaWinner, true))} las bazas.`;
+    const r = s.bazas.map(b => b.result), u = r.length - 1;
+    if (u >= 1 && r[u] === 'parda' && r[0] !== 'parda') reason += ` La ${u === 1 ? 'segunda' : 'tercera'} quedó empatada, y con empate manda quien ganó la primera.`;
+    else if (u === 1 && r[0] === 'parda' && r[1] === 'parda') reason += ' Empate también en el emparde: gana la mano.';
+  }
   const parts = s.participants;
   let bazas = '';
   if (s.bazas.length) {
@@ -1193,10 +1238,12 @@ function helpHTML() {
     <p>Puesto para ganar bazas en el truque y puntos para el ligado. El perro y la perra son comodines en el ligado y la flor.</p>
     <div class="tabla-wrap"><table><thead><tr><th class="num">Puesto</th><th></th><th>Carta</th><th class="num">Ligado</th></tr></thead><tbody>${rows}</tbody></table></div>
     <h3>Ligado</h3><p>Dos del mismo palo: 20 más las dos. Con el perro (29) o la perra (28): lo suyo más tu carta más alta, sea del palo que sea (perro y siete = 36). Sin pareja ni comodín: la carta más alta. Empate: gana la mano.</p>
+    <h3>Bazas y empates</h3><p>Se lleva la jugada quien gane dos bazas. Si una baza queda empatada, manda la primera: si ganas la primera, pierdes la segunda y empatáis la tercera, la jugada es tuya (por haber ganado la primera, no por ser mano). Si ganas la primera y empatáis la segunda, también. Si la que se empata es la primera, decide la segunda (el emparde), y solo si se vuelve a empatar gana la mano. En el dos contra dos, igual, por parejas.</p>
     <h3>Cobros, en este orden</h3>
     <p>Flor 3 · flor envidada 4 si no la quieren, 6 si la quieren · ligado 2 o lo apostado · truque en pase 1 · truque 3 o lo apostado. Si no se quiere, se cobra una china por cada vez que se ha hablado. Gana quien llegue antes a 40.</p>
     <h3>La falta</h3><p>Se apuesta lo que le falta a quien va delante para llegar a 40. Solo se echa en el envite, al principio de la jugada; en el truque no se puede.</p>
     <h3>Subir el truque querido</h3><p>Si has querido el truque y a los rivales ya no les quedan cartas, antes de enseñar tu última carta puedes subirlo. Si no lo quieren, cobras lo que ya estaba querido.</p>
+    <h3>Retirarse</h3><p>Es lo que en el bar se llama irse al mazo: dejas la jugada y el rival se lleva el truque, 1 china o lo que ya estuviera querido. La flor y el ligado se cobran igual que siempre.</p>
     <h3>La pizarra y el cigarro</h3><p>En la pizarra de arriba se apuntan las chinas de cada uno, con una barra que se llena hasta 40; la rayita del medio marca las 20: de 0 a 20 se está «en malas» y de 20 a 40, «en buenas». Cada vez que te toca decidir tienes un cigarro de 45 segundos; si se consume, se echa tu carta más baja, o no quieres, o pasas la flor.</p>
     <div class="sheet-acts">${back}<button class="btn primary" type="button" data-close>Cerrar</button></div>`;
 }
@@ -1444,8 +1491,10 @@ function programarRemoto() {
   S.timer = setTimeout(() => {
     if (S.game !== g || S.red !== R || S.animating || flying() || !R.cola.length) return;
     const m = R.cola.shift();
-    if (R.anfitrion) atenderPeticion(m); else aplicarDelAnfitrion(m);
-    step();
+    const hacer = () => { if (R.anfitrion) atenderPeticion(m); else aplicarDelAnfitrion(m); step(); };
+    // Lo que canta otro también se ve venir (el anfitrión lo aplica en cuanto llega, para no hacer esperar a quien lo pide)
+    const toca = !R.anfitrion && m && m.a && m.n === R.n + 1 && !(m.pista && m.pista.nueva);
+    avisarCanto(toca ? cantoDe(m.a) : null, () => { if (S.game === g && S.red === R) hacer(); });
   }, wait);
 }
 // Lo que se apunta de quien se queda sin tiempo (o tarda demasiado): cada móvil lo cuenta a su manera

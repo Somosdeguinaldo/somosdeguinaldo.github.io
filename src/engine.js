@@ -418,7 +418,7 @@ class Game {
         break;
       case 'mazo':
         needTurn();
-        if (!p.canMazo && !oculta) throw new Error('No puede irse al mazo');
+        if (!p.canMazo && !oculta) throw new Error('No puede retirarse');
         this.goMazo(a.seat);
         break;
       case 'respond':
@@ -593,7 +593,7 @@ class Game {
   goMazo(seat) {
     const J = this.jugada;
     J.mazo = { seat, team: this.teamOf(seat) };
-    this.log(`${this.verb(seat, 'se va', 'te vas')} al mazo.`, { seat, bubble: 'Al mazo', kind: 'bet', act: 'mazo' });
+    this.log(`${this.verb(seat, 'se retira', 'te retiras')}.`, { seat, bubble: 'Me retiro', kind: 'bet', act: 'mazo' });
     this.endJugada('mazo');
   }
 
@@ -630,6 +630,10 @@ class Game {
     if (J.b === 0) this.declareLigado();
     const w = jugadaWinner(J.bazas.map(x => x.result), this.teamOf(J.mano));
     if (w !== null) {
+      // Con una baza empatada después de ganar la primera, manda la primera (no el ser mano)
+      if (r.result === 'parda' && J.b >= 1 && J.bazas[0].result !== 'parda') {
+        this.log(`Con empate manda la primera baza, que la ganó ${this.name(J.bazas[0].winnerSeat)}: ${this.winsText(w, true)} la jugada.`, { kind: 'info' });
+      }
       J.bazaWinner = w;
       this.endJugada('bazas');
       return;
@@ -722,7 +726,7 @@ class Game {
     if (J.mazo) {
       const rival = 1 - J.mazo.team;
       const accepted = t && t.status === 'accepted';
-      items.push({ cat: 'truque', team: rival, pts: accepted ? t.amount : 1, note: accepted ? `Al mazo con truque querido (${t.amount})` : 'Al mazo' });
+      items.push({ cat: 'truque', team: rival, pts: accepted ? t.amount : 1, note: accepted ? `Retirada con truque querido (${t.amount})` : 'Retirada' });
     } else if (t && t.status === 'rejected' && t.acceptedAmount != null) {
       items.push({ cat: 'truque', team: t.rejectWinner, pts: t.acceptedAmount, note: `Subida del truque no querida (se cobra lo querido, ${t.acceptedAmount})` });
     } else if (t && t.status === 'rejected') {

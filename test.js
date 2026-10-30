@@ -216,6 +216,40 @@ test('empate en la segunda baza: gana quien ganó la primera', () => {
   assert.strictEqual(g.pending.summary.bazaWinner, g.teamOf(m));
 });
 
+test('gana la 1ª, pierde la 2ª, empate en la 3ª: gana quien ganó la primera, aunque no sea mano', () => {
+  // El pie gana la primera, la mano la segunda y la tercera queda parda (dos treses)
+  const g = rigged([[['4C', '1B', '3O'], ['1E', '5B', '3E']]]);
+  const m = mano(g), d = pie(g);
+  play(g, m, '4C'); play(g, d, '1E');       // 1ª: pie
+  play(g, d, '5B'); play(g, m, '1B');       // 2ª: mano
+  play(g, m, '3O'); play(g, d, '3E');       // 3ª: parda
+  assert.deepStrictEqual(g.jugada.bazas.map(b => b.result), [g.teamOf(d), g.teamOf(m), 'parda']);
+  assert.strictEqual(g.pending.summary.bazaWinner, g.teamOf(d));
+  assert(g.events.some(e => /manda la primera baza/.test(e.text)));
+  assert.deepStrictEqual(g.pending.summary.items.map(i => [i.cat, i.team, i.pts]), [['truque', g.teamOf(d), 1]]);
+});
+
+test('dos contra dos: gana la 1ª, pierde la 2ª, empate en la 3ª → la pareja que ganó la primera', () => {
+  // Las dos primeras jugadas, a lo que salga; la de toda la mesa, con las cartas puestas
+  const g = new Game({ mode: '2v2', seed: 3, humans: [], rigged: (idx, parts) => idx !== 2 ? null : {
+    [parts[0]]: ['4C', '5B', '3O'],   // mano (pareja A)
+    [parts[1]]: ['1E', '4E', '5O'],   // pareja B
+    [parts[2]]: ['4O', '1B', '6O'],   // pareja A
+    [parts[3]]: ['6B', '7C', '3E'],   // pareja B (reparte)
+  } });
+  g.start();
+  let guard = 0;
+  while (!(g.jugada.kind === 'team' && g.pending.type === 'turn') && guard++ < 5000) g.act(AI.decide(g));
+  const [p0, p1, p2, p3] = g.jugada.participants;
+  assert.strictEqual(g.jugada.mano, p0);
+  play(g, p0, '4C'); play(g, p1, '1E'); play(g, p2, '4O'); play(g, p3, '6B');   // 1ª: pareja B
+  play(g, p1, '4E'); play(g, p2, '1B'); play(g, p3, '7C'); play(g, p0, '5B');   // 2ª: pareja A
+  play(g, p2, '6O'); play(g, p3, '3E'); play(g, p0, '3O'); play(g, p1, '5O');   // 3ª: parda
+  const A = g.teamOf(p0), B = g.teamOf(p1);
+  assert.deepStrictEqual(g.jugada.bazas.map(b => b.result), [B, A, 'parda']);
+  assert.strictEqual(g.pending.summary.bazaWinner, B);
+});
+
 test('mazo: 1 china, o lo apostado si había truque querido', () => {
   let g = rigged([[['4C', '5C', '6O'], ['1E', '1B', '7E']]]);
   let m = mano(g), d = pie(g);

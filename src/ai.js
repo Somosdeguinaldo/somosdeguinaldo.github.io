@@ -158,9 +158,9 @@ function decideTurn(game, p) {
   let best = evals[0];
   for (const e of evals) if (e.p >= evals[0].p - 0.04 && truqueRank(card(e.id)) < truqueRank(card(best.id))) best = e;
   const pT = evals[0].p;
-  // Con una mano perdida, mejor irse al mazo que enseñar las cartas (cuesta lo mismo: 1, o el truque querido)
+  // Con una mano perdida, mejor retirarse (irse al mazo) que enseñar las cartas (cuesta lo mismo: 1, o el truque querido)
   if (p.canMazo && game.jugada.b >= 1 && !p.canSubir && pT < 0.03 && rnd() < 0.5) {
-    debug(game, s, `gana la jugada con ${pct(pT)} → se va al mazo`);
+    debug(game, s, `gana la jugada con ${pct(pT)} → se retira`);
     return { type: 'mazo', seat: s };
   }
   let env = false, tru = false;

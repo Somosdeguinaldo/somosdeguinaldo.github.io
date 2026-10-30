@@ -553,6 +553,13 @@ svg.capa { overflow: visible; }
 .tag svg { width: 13px; height: 11px; fill: #fbf6e9; stroke: #a8281f; stroke-width: 1.1; }
 .globo { display: inline-block; justify-self: inherit; background: var(--papel); color: var(--tinta); font-weight: 800; font-size: 15px; padding: 1px 8px; border-radius: 9px 11px 9px 3px; }
 .globo.flor { background: var(--oro); }
+/* Alguien va a cantar: carraspea, se ilumina su nombre y da con los nudillos en la mesa */
+.globo.aviso-canto { background: #fff3d6; font-style: italic; box-shadow: 0 0 0 2px var(--oro), 0 4px 12px rgba(0,0,0,.4); animation: aviso-globo .3s cubic-bezier(.2,.9,.3,1.4) both; }
+.etiqueta.avisa .seat-head { box-shadow: 0 0 0 2px var(--oro), 0 0 18px rgba(242,207,110,.6); animation: aviso-latido .45s ease-in-out infinite alternate; }
+.abanico-rival.avisa { animation: aviso-mano .17s ease-out 2; }
+@keyframes aviso-globo { from { opacity: 0; transform: translateY(5px) scale(.55); } }
+@keyframes aviso-latido { from { box-shadow: 0 0 0 2px rgba(242,207,110,.45), 0 0 6px rgba(242,207,110,.25); } to { box-shadow: 0 0 0 2.5px var(--oro), 0 0 22px rgba(242,207,110,.75); } }
+@keyframes aviso-mano { 0% { scale: 1; } 25% { scale: 1.09; } 100% { scale: 1; } }
 .sena { font-family: var(--f-tiza); font-size: 17px; line-height: 1.1; color: var(--oro-2); }
 /* La tuya va en una sola línea, para que el globo no tape tus cartas */
 .etiqueta[data-lado="bottom"] { display: flex; align-items: center; gap: 6px; transform: translateX(-50%); }
@@ -724,6 +731,7 @@ svg.capa { overflow: visible; }
 .pv-truque { --c: #efe5cf; --t: #a8281f; }
 .pv-ambos { --c: #e7dcc0; --t: #5b2a55; font-size: 11px; }
 .pv-mazo { --c: #b9ad99; --t: #3a3229; }
+.pv.pv-mazo { font-size: 11.5px; letter-spacing: 0; }
 .pv-quiero { --c: #2f6b3a; --t: #f3ecd8; }
 .pv-no { --c: #efe5cf; --t: #2a241d; }
 .pv-subir { --c: #d9a93a; --t: #2a1f10; }
@@ -752,6 +760,7 @@ svg.capa { overflow: visible; }
   .posavasos { min-height: 84px; }
   .posavasos:empty { display: none; }
   .pv { width: 78px; height: 78px; font-size: 15px; }
+  .pv.pv-mazo { font-size: 13px; }
   .pv-flor { width: 92px; height: 92px; }
 }
 @media (max-width: 520px) {
@@ -764,6 +773,7 @@ svg.capa { overflow: visible; }
   .equipo .num { font-size: 24px; }
   .chip-pz { font-size: 12px; padding: 1px 8px; }
   .pv { width: 66px; height: 66px; font-size: 12px; }
+  .pv.pv-mazo { font-size: 10px; letter-spacing: -.01em; }
   .pv-flor { width: 78px; height: 78px; font-size: 17px; }
   .posavasos { gap: 8px 10px; min-height: 74px; }
   .acciones { min-height: 104px; }

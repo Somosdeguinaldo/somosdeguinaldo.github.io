@@ -89,7 +89,7 @@ function crear(UI) {
     { texto: `<p>¡Te has llevado dos bazas, y la jugada es tuya!</p>
         <p>Al acabar se cobra siempre en este orden: <b>flor, ligado y truque</b>. Tu ligado de 33 gana a mi 5: <b>2 chinas</b>. Y el truque querido: <b>3 más</b>. ¡5 chinas para ti!</p>`,
       donde: 'abajo', cuando: () => S.overlay === 'summary' },
-    { texto: `<p>Esto es lo básico. Hay más cosas que irás viendo jugando: la <b>flor</b> (tres cartas del mismo palo, que hay que cantar siempre), el <b>emparde</b>, la <b>falta</b> o <b>irse al mazo</b>.</p>
+    { texto: `<p>Esto es lo básico. Hay más cosas que irás viendo jugando: la <b>flor</b> (tres cartas del mismo palo, que hay que cantar siempre), el <b>emparde</b>, la <b>falta</b> o <b>retirarse</b> (irse al mazo).</p>
         <p>Lo tienes todo explicado en el posavasos de «Cartas y cobros», en la puerta del bar.</p>`,
       alEntrar: () => UI.closeSheet() },
     { texto: `<p>Unos consejos más. El <b>cigarro</b> del cenicero marca tu tiempo para decidir: que no se te consuma. Y si no ves bien una carta de la mesa, <b>tócala</b> y te la acerco.</p>

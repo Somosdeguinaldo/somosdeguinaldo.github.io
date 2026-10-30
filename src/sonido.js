@@ -784,6 +784,15 @@ function toc(t, k) {
   const n = gen(bus.efectos, t, [[0.001, 0.3 * k], [0.03, 0.0001]]);
   soplo(t, 0.04, n, { tipo: 'bandpass', f: 1400, q: 1.2 });
 }
+// Un golpe con los nudillos en la madera de la mesa (el «ojo, que voy» antes de cantar)
+function nudillo(t, k) {
+  const g = gen(bus.efectos, t, [[0.002, 0.6 * k], [0.1, 0.0001]]);
+  osc('sine', 250, t, 0.11, g).frequency.exponentialRampToValueAtTime(165, t + 0.09);
+  const n = gen(bus.efectos, t, [[0.001, 0.4 * k], [0.035, 0.0001]]);
+  soplo(t, 0.045, n, { tipo: 'bandpass', f: 1050, q: 1.1 });
+  const sal = gen(bus.efectosSala, t, [[0.003, 0.18 * k], [0.14, 0.0001]]);
+  osc('sine', 250, t, 0.15, sal);
+}
 function metales(notas, t, dur, k, oscuro) {
   const f = ctx.createBiquadFilter(); f.type = 'lowpass'; f.Q.value = 1.2;
   const top = oscuro ? 1500 : 3200;
@@ -865,6 +874,7 @@ const EFECTOS = [
   ['pierde', 1.0, t => { metales([55, 51, 48], t, 0.5, 0.6, true); bajon(t + 0.45, 0.8); }],
   // Puñetazo del que pierde la jugada: el golpe, las chinas que saltan y los vasos que tiemblan
   ['mesazo', 0.7, t => { golpe(t, 1); vasosTiemblan(t + 0.012); }],
+  ['nudillos', 0.5, t => { nudillo(t, 1); nudillo(t + 0.17, 0.85); }],
 ];
 function vasosTiemblan(t) {
   for (let i = 0; i < 6; i++) {
@@ -1103,6 +1113,8 @@ const API = {
   enBar(si) { estado.enBar = !!si; ponerAmbiente(); },
   // El puñetazo en la mesa del que pierde (k: la fuerza, de 0 a 1)
   mesazo(k = 1) { sonar('mesazo', k); },
+  // Toc, toc: alguien va a cantar
+  nudillos(k = 1) { sonar('nudillos', k); },
   click() { sonar('click'); },
   posavaso() { sonar('posavaso'); },
   cartaSale() { sonar('arrastre'); },
