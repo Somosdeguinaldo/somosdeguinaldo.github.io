@@ -876,7 +876,7 @@ function renderAbanico() {
   }).join('');
 }
 
-// «Y yo»: abre el selector para subir lo que quieras (hasta la falta)
+// «Y yo» en el envite: abre el selector para subir lo que quieras (hasta la falta). En el truque no: van de 3 en 3
 function botonYYo(tipo, abierto) {
   const data = `data-yyo="${tipo}" aria-expanded="${abierto}"`;
   return pv(`pv-subir${abierto ? ' abierto' : ''}`, data, 'Y yo', abierto ? 'eligiendo…' : '¿cuántas?', -6);
@@ -923,13 +923,9 @@ function renderAcciones() {
       if (p.canTruque) coasters += pv('pv-truque', 'data-act="truque"', 'Truque', '3 chinas', 4);
       if (p.canEnvido && p.canTruque) coasters += pv('pv-ambos', 'data-act="envidoTruque"', 'Envido<br>y truque', '', -2, true);
       if (p.canSubir) {
-        const key = `subir-${p.subirAmount}`;
-        if (S.raiseKey !== key) { S.raiseKey = key; S.raise = Math.min(3, Math.max(1, p.subirMax)); S.subiendo = null; }
-        S.raise = Math.max(1, Math.min(p.subirMax, S.raise));
-        inf = '<span class="aviso">Ya no les quedan cartas: antes de enseñar la tuya puedes subir el truque querido.</span>';
-        coasters += botonYYo('subir', S.subiendo && S.subiendo.key === key);
-        if (S.subiendo && S.subiendo.key === key) reto = selectorSubida('Subes el truque', p.subirAmount, p.subirMax);
-        if (p.canFaltaSubir) coasters += pv('pv-falta', 'data-act="subirFalta"', 'La<br>falta', `${p.faltaAmount} chinas`, 5);
+        // En el truque se sube de 3 en 3: un solo botón, sin elegir cuántas
+        inf = `<span class="aviso">Ya no les quedan cartas: antes de enseñar la tuya puedes subir el truque querido ${p.subirMax} más.</span>`;
+        coasters += pv('pv-subir', 'data-act="subir"', 'Y yo', `${p.subirAmount + p.subirMax} chinas`, -6);
       }
       if (p.canMazo) coasters += pv('pv-mazo', 'data-act="mazo"', 'Retirarse', '', 6, true);
     }
@@ -953,10 +949,12 @@ function renderAcciones() {
     reto = `<div class="reto ${cls}" role="status"><b>${esc(title)}</b><span>${esc(`Van ${p.amount} chinas · si no quieres, ${quien} ${cuanto}`)}</span></div>`;
     coasters += pv('pv-quiero', 'data-resp="quiero"', 'Quiero', '', -4);
     coasters += pv('pv-no', 'data-resp="noquiero"', 'No<br>quiero', '', 3, true);
-    if (p.canRaise) {
+    if (p.canRaise && p.bet === 'truque') coasters += pv('pv-subir', 'data-resp="raise"', 'Y yo', `${p.amount + p.maxRaise} chinas`, -6);
+    else if (p.canRaise) {
+      // En el envite sí se elige cuánto se sube
       const abierto = S.subiendo && S.subiendo.key === key;
       coasters += botonYYo('resp', abierto);
-      if (abierto) reto = selectorSubida(`Subes el ${p.bet === 'envido' ? 'envite' : 'truque'}`, p.amount, p.maxRaise);
+      if (abierto) reto = selectorSubida('Subes el envite', p.amount, p.maxRaise);
     }
     if (p.canFalta) coasters += pv('pv-falta', 'data-resp="falta"', 'La<br>falta', `${p.faltaAmount} chinas`, 5);
   } else if (!busy && p.type === 'florDecide' && p.seats.includes(HUMAN)) {
@@ -1242,7 +1240,8 @@ function helpHTML() {
     <h3>Cobros, en este orden</h3>
     <p>Flor 3 · flor envidada 4 si no la quieren, 6 si la quieren · ligado 2 o lo apostado · truque en pase 1 · truque 3 o lo apostado. Si no se quiere, se cobra una china por cada vez que se ha hablado. Gana quien llegue antes a 40.</p>
     <h3>La falta</h3><p>Se apuesta lo que le falta a quien va delante para llegar a 40. Solo se echa en el envite, al principio de la jugada; en el truque no se puede.</p>
-    <h3>Subir el truque querido</h3><p>Si has querido el truque y a los rivales ya no les quedan cartas, antes de enseñar tu última carta puedes subirlo. Si no lo quieren, cobras lo que ya estaba querido.</p>
+    <h3>El truque, de 3 en 3</h3><p>El truque vale 3 chinas. Quien lo recibe puede querer, no querer o subir con «Y yo», y en el truque se sube siempre de 3 en 3: si te trucan y subes, van 6; si te vuelven a subir, 9; y así (sin llegar a lo que falta para ganar). En el envite, en cambio, cada uno sube lo que quiera.</p>
+    <h3>Subir el truque querido</h3><p>Si has querido el truque y a los rivales ya no les quedan cartas, antes de enseñar tu última carta puedes subirlo 3 más. Si no lo quieren, cobras lo que ya estaba querido.</p>
     <h3>Retirarse</h3><p>Es lo que en el bar se llama irse al mazo: dejas la jugada y el rival se lleva el truque, 1 china o lo que ya estuviera querido. La flor y el ligado se cobran igual que siempre.</p>
     <h3>La pizarra y el cigarro</h3><p>En la pizarra de arriba se apuntan las chinas de cada uno, con una barra que se llena hasta 40; la rayita del medio marca las 20: de 0 a 20 se está «en malas» y de 20 a 40, «en buenas». Cada vez que te toca decidir tienes un cigarro de 45 segundos; si se consume, se echa tu carta más baja, o no quieres, o pasas la flor.</p>
     <div class="sheet-acts">${back}<button class="btn primary" type="button" data-close>Cerrar</button></div>`;
@@ -1356,7 +1355,7 @@ function colocar() {
 }
 function difundirMesa() {
   const R = S.red;
-  MESA.enviar('mesa', { modo: R.modo, largo: R.largo, sitios: R.sitios, apodos: R.apodos, jugando: R.jugando });
+  MESA.enviar('mesa', { modo: R.modo, largo: R.largo, sitios: R.sitios, apodos: R.apodos, jugando: R.jugando, reglas: P.REGLAS });
 }
 function repartirMesa() {
   const R = S.red;
@@ -1368,11 +1367,15 @@ function repartirMesa() {
   }
   R.ronda++;
   // Sin semilla: la baraja solo está en el móvil del anfitrión. El corte (público) y las cartas van luego.
-  empezarEnRed({ modo: R.modo, largo: R.largo, asientos, ronda: R.ronda, tiempo: S.turnTime || 0 }, null, null);
+  empezarEnRed({ modo: R.modo, largo: R.largo, asientos, ronda: R.ronda, tiempo: S.turnTime || 0, reglas: P.REGLAS }, null, null);
 }
 const claveManos = (ronda, nj) => `${ronda}:${nj}`;
+// Con reglas distintas, cada móvil contaría una partida diferente: hay que tener todos la misma versión del juego
+const AVISO_VERSION = 'Tu móvil y el de quien abrió la mesa tienen versiones distintas del juego. Cerrad la app los dos (o recargad la página) y volved a entrar para tener la última.';
+const mismasReglas = d => (Number(d && d.reglas) || 1) === P.REGLAS;
 function empezarEnRed(config, acciones, bots) {
   const R = S.red, mio = config.asientos.findIndex(a => a.id === MESA.miId());
+  if (!R.anfitrion && !mismasReglas(config)) { S.mesaAviso = AVISO_VERSION; R.enPartida = true; if (!S.game || S.overlay === 'mesa') openSheet('mesa'); return; }
   if (mio < 0) { R.enPartida = true; if (S.overlay === 'mesa') openSheet('mesa'); return; } // de pie en la barra: entra en la próxima
   // Sin mis cartas no puedo sentarme: espero a que lleguen (y si tardan, pido que me pongan al día)
   if (!R.anfitrion && !R.manos[claveManos(config.ronda || 1, 1)]) {
@@ -1640,6 +1643,8 @@ function recibirMensaje(m) {
       if (R.anfitrion) return;
       Object.assign(R, { modo: d.modo === '2v2' ? '2v2' : '1v1', largo: d.largo === 'partida' ? 'partida' : 'juego', sitios: Array.isArray(d.sitios) ? d.sitios : R.sitios, enPartida: !!d.jugando });
       for (const k in d.apodos || {}) R.apodos[k] = limpiarApodo(d.apodos[k]);
+      if (!mismasReglas(d)) S.mesaAviso = AVISO_VERSION;
+      else if (S.mesaAviso === AVISO_VERSION) S.mesaAviso = '';
       if (!R.jugando && S.overlay === 'mesa') openSheet('mesa');
       return;
     case 'empieza': if (!R.anfitrion) empezarEnRed(d, null, null); return;
@@ -1953,15 +1958,14 @@ document.addEventListener('click', e => {
   if (t.dataset.act) {
     if (p.type !== 'turn' || p.seat !== HUMAN) return;
     const k = t.dataset.act;
-    if (k === 'subir') humanAct({ type: 'subir', seat: HUMAN, amount: S.raise });
-    else if (k === 'subirFalta') humanAct({ type: 'subir', seat: HUMAN, falta: true });
+    if (k === 'subir') humanAct({ type: 'subir', seat: HUMAN, amount: p.subirMax });
     else humanAct({ type: k, seat: HUMAN });
     return;
   }
   if (t.dataset.yyo) { S.subiendo = S.subiendo ? null : { key: S.raiseKey }; renderAcciones(); return; }
   if (t.hasAttribute('data-raise-no')) { S.subiendo = null; renderAcciones(); return; }
   if (t.dataset.raise || t.dataset.raiseA) {
-    const max = p.type === 'turn' ? p.subirMax : p.maxRaise;
+    const max = p.maxRaise;
     const n = t.dataset.raiseA ? Number(t.dataset.raiseA) : S.raise + Number(t.dataset.raise);
     S.raise = Math.max(1, Math.min(max, n));
     renderAcciones();
@@ -1969,13 +1973,12 @@ document.addEventListener('click', e => {
   }
   if (t.hasAttribute('data-raise-ok')) {
     S.subiendo = null;
-    if (p.type === 'turn' && p.canSubir) humanAct({ type: 'subir', seat: HUMAN, amount: S.raise });
-    else if (p.type === 'respond' && p.canRaise && needsHuman(p)) humanRespond('raise', S.raise);
+    if (p.type === 'respond' && p.canRaise && needsHuman(p)) humanRespond('raise', S.raise);
     return;
   }
   if (t.dataset.resp && needsHuman(p)) {
     const k = t.dataset.resp;
-    humanRespond(k, k === 'raise' ? S.raise : undefined);
+    humanRespond(k, k === 'raise' ? (p.bet === 'truque' ? p.maxRaise : S.raise) : undefined);
   }
 });
 $('#camara').addEventListener('scroll', e => { e.currentTarget.scrollTop = 0; e.currentTarget.scrollLeft = 0; });
@@ -2020,8 +2023,7 @@ document.addEventListener('pointerdown', e => {
     repite = { t: setTimeout(() => {
       const p = S.game && S.game.pending;
       if (!p) return pararRepite();
-      const max = p.type === 'turn' ? p.subirMax : p.maxRaise;
-      S.raise = Math.max(1, Math.min(max, S.raise + d));
+      S.raise = Math.max(1, Math.min(p.maxRaise || 1, S.raise + d));
       renderAcciones();
       paso(Math.max(40, espera * 0.72));
     }, espera) };

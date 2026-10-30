@@ -76,6 +76,11 @@ function ligadoValue(hand) {
   return best;
 }
 
+// En el truque no se sube lo que uno quiera: cada «Y yo» son 3 chinas más (3, 6, 9, 12…). En el envite, sí.
+const SUBIDA_TRUQUE = 3;
+// Versión de las reglas: en la mesa con amigos, todos los móviles tienen que jugar con las mismas
+const REGLAS = 2;
+
 // Quién gana una baza. plays: [{seat, card}] con objetos carta.
 function bazaResult(plays, teamOf) {
   let max = -1;
@@ -343,12 +348,12 @@ class Game {
     const T = J.truque, team = this.teamOf(s), falta = this.faltaAmount();
     const rivalesSinCartas = this.teamParticipants(1 - team).every(r => !J.hands[r].length);
     const canSubir = !mustFlor && !!T && T.status === 'accepted' && !T.isFalta && T.lastTeam !== team &&
-      rivalesSinCartas && J.hands[s].length > 0 && falta - T.amount - 1 >= 1;   // como en el resto del truque: hasta la falta menos 1
+      rivalesSinCartas && J.hands[s].length > 0 && falta - T.amount - 1 >= SUBIDA_TRUQUE;   // 3 más, sin llegar a la falta
     return {
       mustFlor,
       canEnvido: !mustFlor && !J.firstPlayed[s] && !J.envido && !anyFlor,
       canTruque: !mustFlor && !J.truque,
-      canSubir, subirMax: canSubir ? falta - T.amount - 1 : 0, subirAmount: T ? T.amount : 0,
+      canSubir, subirMax: canSubir ? SUBIDA_TRUQUE : 0, subirAmount: T ? T.amount : 0,
       canFaltaSubir: false, faltaAmount: falta,   // la falta solo se echa en el envite
       canMazo: !mustFlor,
       cards: mustFlor ? [] : J.hands[s].slice(),
@@ -362,7 +367,9 @@ class Game {
     const isFlor = bet.kind === 'florEnvite';
     const seats = isFlor ? this.florSingers(team) : this.teamParticipants(team);
     const falta = this.faltaAmount();
-    const maxRaise = falta - bet.amount - 1;
+    // Hasta la falta menos 1; en el truque, de 3 en 3 (si no caben 3 más, ya no se sube)
+    const libre = falta - bet.amount - 1;
+    const maxRaise = bet.kind === 'truque' ? (libre >= SUBIDA_TRUQUE ? SUBIDA_TRUQUE : 0) : libre;
     return {
       type: 'respond', bet: bet.kind, team, seats, callerTeam: bet.lastTeam,
       amount: bet.amount, count: bet.count, isFalta: !!bet.isFalta,
@@ -414,7 +421,7 @@ class Game {
         needTurn();
         if (!p.canSubir && !oculta) throw new Error('No se puede subir el truque ahora');
         if (a.falta) throw new Error('La falta solo se echa en el envite');
-        this.subirTruque(a.seat, a.amount);
+        this.subirTruque(a.seat);
         break;
       case 'mazo':
         needTurn();
@@ -468,10 +475,10 @@ class Game {
     }
   }
 
-  subirTruque(seat, n) {
+  subirTruque(seat) {
     const J = this.jugada, bet = J.truque, team = this.teamOf(seat);
     bet.acceptedAmount = bet.amount;
-    const k = Math.max(1, Math.min(Math.floor(n || 1), Math.max(1, this.faltaAmount() - bet.amount - 1)));
+    const k = SUBIDA_TRUQUE;
     bet.amount += k;
     this.log(`${this.name(seat)}: Y yo, ${k} más al truque antes de su última carta (${bet.amount} chinas).`, { seat, bubble: `Y yo: ${bet.amount}`, kind: 'bet', act: 'raise', betKind: 'truque', amount: bet.amount, n: k });
     bet.count++;
@@ -551,7 +558,7 @@ class Game {
       if (bet.kind === 'truque') this.endJugada('truque');
     } else if (resp.kind === 'raise') {
       if (!p.canRaise) throw new Error('No se puede subir');
-      const n = Math.max(1, Math.min(Math.floor(resp.amount || 1), p.maxRaise));
+      const n = bet.kind === 'truque' ? SUBIDA_TRUQUE : Math.max(1, Math.min(Math.floor(resp.amount || 1), p.maxRaise));
       bet.amount += n;
       bet.count++;
       bet.lastTeam = team;
@@ -828,7 +835,7 @@ class Game {
 
 const Perro = {
   SUITS, RANKS, CARDS, ALL_IDS, card, isPerro, isPerra, isWild, truqueRank, ligadoCardValue, cardName,
-  hasFlor, florValue, ligadoValue, bazaResult, jugadaWinner, senasFor, mulberry32, shuffle, Game,
+  hasFlor, florValue, ligadoValue, bazaResult, jugadaWinner, senasFor, mulberry32, shuffle, Game, SUBIDA_TRUQUE, REGLAS,
 };
 if (typeof module !== 'undefined' && module.exports) module.exports = Perro;
 else root.Perro = Perro;

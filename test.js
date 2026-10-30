@@ -77,8 +77,10 @@ test('truque subido y rechazado: cobra las veces que se ha hablado', () => {
   const m = mano(g), d = pie(g);
   g.act({ type: 'truque', seat: m });
   assert.strictEqual(g.pending.type, 'respond');
-  resp(g, d, 'raise', 2);  // 5
-  resp(g, m, 'raise', 3);  // 8
+  resp(g, d, 'raise', 3);
+  assert.strictEqual(g.jugada.truque.amount, 6);
+  resp(g, m, 'raise', 3);
+  assert.strictEqual(g.jugada.truque.amount, 9);
   resp(g, d, 'noquiero');
   const s = g.pending.summary;
   assert.strictEqual(s.reason, 'truque');
@@ -89,13 +91,13 @@ test('truque querido: no se puede volver a subir y el ganador cobra lo apostado'
   const g = rigged([[['4C', '5C', '6O'], ['1E', '1B', '7E']]]);
   const m = mano(g), d = pie(g);
   g.act({ type: 'truque', seat: m });
-  resp(g, d, 'raise', 2);
+  resp(g, d, 'raise', 3);
   resp(g, m, 'quiero');
   assert.strictEqual(g.pending.type, 'turn');
   assert.strictEqual(g.pending.canTruque, false);
   play(g, m, '4C'); play(g, d, '1E'); play(g, d, '7E'); play(g, m, '5C');
   const s = g.pending.summary;
-  assert.deepStrictEqual(s.items.map(i => [i.cat, i.team, i.pts]), [['truque', g.teamOf(d), 5]]);
+  assert.deepStrictEqual(s.items.map(i => [i.cat, i.team, i.pts]), [['truque', g.teamOf(d), 6]]);
 });
 
 test('envido querido: se declara al acabar la primera baza y gana el mejor ligado', () => {
@@ -327,6 +329,28 @@ test('la falta y el orden de cobro: flor, ligado, truque', () => {
   assert(s.items.find(i => i.cat === 'truque').skipped);
 });
 
+test('en el truque se sube de 3 en 3 (3, 6, 9…); en el envite, lo que se quiera', () => {
+  const g = rigged([[['4C', '5C', '6O'], ['1E', '1B', '7E']]]);
+  const m = mano(g), d = pie(g);
+  g.act({ type: 'truque', seat: m });
+  assert.strictEqual(g.pending.maxRaise, 3);
+  resp(g, d, 'raise', 20);                 // aunque pida 20, son 3
+  assert.strictEqual(g.jugada.truque.amount, 6);
+  resp(g, m, 'raise', 1);                  // y aunque pida 1, también 3
+  assert.strictEqual(g.jugada.truque.amount, 9);
+  assert(g.events.some(e => /Y yo, 3 más \(9 chinas\)/.test(e.text)));
+  // el envite sigue siendo libre
+  const h = rigged([[['4C', '5C', '6O'], ['1E', '1B', '7E']]]);
+  h.act({ type: 'envido', seat: mano(h) });
+  resp(h, pie(h), 'raise', 7);
+  assert.strictEqual(h.jugada.envido.amount, 9);
+  // cerca del final: si no caben 3 más sin llegar a la falta, ya no se sube
+  const k = rigged([[['4C', '5C', '6O'], ['1E', '1B', '7E']]]);
+  k.scores = [34, 30];                     // faltan 6 para ganar
+  k.act({ type: 'truque', seat: mano(k) });
+  assert.strictEqual(k.pending.canRaise, false);
+});
+
 test('la falta solo se echa en el envite, nunca en el truque', () => {
   const g = rigged([[['4C', '5O', '6B'], ['4O', '5B', '6E']]]);
   const m = mano(g), d = pie(g);
@@ -335,7 +359,7 @@ test('la falta solo se echa en el envite, nunca en el truque', () => {
   assert.strictEqual(g.pending.canFalta, false);
   assert.throws(() => resp(g, d, 'falta'));
   assert.strictEqual(g.pending.bet, 'truque');
-  resp(g, d, 'raise', 2);
+  resp(g, d, 'raise', 3);
   assert.strictEqual(g.pending.canFalta, false);
   const h = rigged([[['4C', '5O', '6B'], ['4O', '5B', '6E']]]);
   h.act({ type: 'envido', seat: mano(h) });

@@ -75,6 +75,8 @@ for (let k = 0; k < N; k++) {
       const f = host.foto();
       host.act(a);
       acciones++;
+      const Tr = host.jugada.truque;
+      if (Tr && !Tr.isFalta && Tr.amount % 3 !== 0) { fallos++; console.log('El truque no va de 3 en 3:', Tr.amount); }
       if (a.type === 'subir') {
         subidas++;
         if (T.amount >= falta) { fallos++; console.log('El truque querido se ha subido hasta la falta:', T.amount, falta); }

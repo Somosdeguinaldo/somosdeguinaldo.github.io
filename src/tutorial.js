@@ -76,7 +76,7 @@ function crear(UI) {
         <p>Esta baza es mía, y quien gana una baza sale en la siguiente: ahora salgo yo.</p>`,
       cuando: () => { const j = J(), p = P(); return j && j.bazas[0].result != null && p && p.type === 'turn' && p.seat === 1 && !UI.ocupado(); } },
     { tipo: 'accion', texto: `<p><b>¡Truque!</b> Te he trucado: ahora la jugada vale 3 chinas en vez de 1.</p>
-        <p>Puedes <b>querer</b>, <b>no querer</b> (y yo me llevo 1 china) o <b>subir</b> con «Y yo». Te quedan el siete de oros y el tres de espadas, dos cartas buenas. <em class="haz">Dime «Quiero».</em></p>`,
+        <p>Puedes <b>querer</b>, <b>no querer</b> (y yo me llevo 1 china) o <b>subir</b> con «Y yo», que en el truque son siempre 3 chinas más. Te quedan el siete de oros y el tres de espadas, dos cartas buenas. <em class="haz">Dime «Quiero».</em></p>`,
       foco: ['[data-resp="quiero"]'], boton: '[data-resp="quiero"]', permite: a => a.type === 'respond' && a.responses && a.responses[0] && a.responses[0].kind === 'quiero',
       cuando: () => { const p = P(); return p && p.type === 'respond' && p.bet === 'truque' && p.seats.includes(0) && !UI.ocupado(); } },
     { tipo: 'accion', texto: `<p>He echado un cuatro, que vale muy poco: cualquiera de tus cartas lo mata.</p>

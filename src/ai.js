@@ -178,7 +178,7 @@ function decideTurn(game, p) {
     const win = truqueProb(game, s, p.cards[0], 40);
     const sube = win > 0.9 || (win < 0.15 && rnd() < 0.12);
     debug(game, s, `última carta, gana con ${pct(win)}${sube ? ' → sube el truque' : ''}`);
-    if (sube) return { type: 'subir', seat: s, amount: Math.min(3, p.subirMax) };
+    if (sube) return { type: 'subir', seat: s, amount: p.subirMax };
   }
   if (env && tru) return { type: 'envidoTruque', seat: s };
   if (env) return { type: 'envido', seat: s };
@@ -198,7 +198,8 @@ function decideResponse(game, p, seat) {
   if (p.bet === 'florEnvite') r = { kind: (2 * adj - 1) * 6 >= -4 ? 'quiero' : 'noquiero' };
   else if (p.canFalta && adj > 0.88 && rnd() < 0.4) r = { kind: 'falta' };
   else if (p.canRaise && adj > 0.75 && c < 4) {
-    const step = p.bet === 'envido' ? 2 + Math.floor(rnd() * 2) : 3 + Math.floor(rnd() * 3);
+    // En el envite sube 2 o 3; en el truque siempre son 3 (se sube de 3 en 3)
+    const step = p.bet === 'envido' ? 2 + Math.floor(rnd() * 2) : p.maxRaise;
     r = { kind: 'raise', amount: Math.min(step, p.maxRaise) };
   } else r = { kind: (2 * adj - 1) * A >= -c ? 'quiero' : 'noquiero' };
   debug(game, seat, `${p.bet === 'florEnvite' ? 'flor' : p.bet} a ${A}: gana con ${pct(prob)} → ${r.kind}${r.amount ? ' +' + r.amount : ''}`);
