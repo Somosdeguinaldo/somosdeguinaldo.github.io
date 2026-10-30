@@ -1191,6 +1191,7 @@ function helpHTML() {
   const back = S.game ? '<button class="btn" type="button" data-open="menu">Volver</button>' : '';
   return `<h2>Orden de las cartas</h2>
     <p>Puesto para ganar bazas en el truque y puntos para el ligado. El perro y la perra son comodines en el ligado y la flor.</p>
+    <p>Las bravas llevan marca para reconocerlas de un vistazo: el perro y la perra, su perro (un mastín con carlanca y una podenca); los ases de espadas y de bastos y los sietes de espadas y de oros, una estrella. Cada palo tiene su color: oros dorado, copas granate, espadas azul y bastos verde.</p>
     <div class="tabla-wrap"><table><thead><tr><th class="num">Puesto</th><th></th><th>Carta</th><th class="num">Ligado</th></tr></thead><tbody>${rows}</tbody></table></div>
     <h3>Ligado</h3><p>Dos del mismo palo: 20 más las dos. Con el perro (29) o la perra (28): lo suyo más tu carta más alta, sea del palo que sea (perro y siete = 36). Sin pareja ni comodín: la carta más alta. Empate: gana la mano.</p>
     <h3>Cobros, en este orden</h3>

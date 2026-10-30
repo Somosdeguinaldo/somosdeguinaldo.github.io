@@ -1,7 +1,7 @@
 /* El Perro — el «service worker»: guarda una copia del juego en el móvil para poder jugar sin cobertura.
    Siempre intenta primero lo nuevo de internet (así cada cambio llega enseguida); si no hay conexión, o tarda
    demasiado, tira de la copia guardada. Lo de Supabase (cuentas y mesa con amigos) no pasa por aquí. */
-const VERSION = 'ea216a7487';
+const VERSION = '8d3a4d9410';
 const CACHE = 'el-perro-' + VERSION;
 const BASICO = ['./', 'index.html', 'config.js', 'manifest.webmanifest', 'icono-180.png', 'icono-192.png', 'icono-512.png', 'icono-maskable-512.png'];
 const FUENTES = /^https:\/\/fonts\.(googleapis|gstatic)\.com\//;
